@@ -1,13 +1,19 @@
 {
   "name": "dayon",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
-    "check": "node --check public/app.js && node --check server.mjs && node --check lib/database.mjs && node --check lib/security.mjs",
-    "test": "node --test test/*.test.mjs"
+    "check": "node scripts/check.mjs",
+    "test": "node --test test/backend.test.mjs",
+    "test:postgres": "node --test test/postgres.test.mjs"
   },
-  "engines": { "node": ">=24" }
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "pg": "8.23.1"
+  }
 }

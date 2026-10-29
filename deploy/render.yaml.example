@@ -6,7 +6,7 @@ services:
     runtime: node
     region: singapore
     plan: starter
-    buildCommand: npm run check
+    buildCommand: npm ci && npm run check
     startCommand: npm start
     healthCheckPath: /api/status
     numInstances: 1

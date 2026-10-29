@@ -1,0 +1,26 @@
+# Review-only free-first deployment: Render Free app + an existing external PostgreSQL.
+# Create a Neon Free database separately; store its URL in Render's secret settings.
+# Review both services' current free-plan terms before creating resources.
+# No disk, paid database resource, or paid compute plan is declared here.
+services:
+  - type: web
+    name: dayon-arme
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npm ci && npm run check
+    startCommand: npm start
+    healthCheckPath: /api/status
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: MOA_SECURE_COOKIE
+        value: "1"
+      - key: MOA_REQUIRE_DATABASE_URL
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: MOA_SETUP_TOKEN
+        generateValue: true
