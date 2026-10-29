@@ -1,3 +1,4 @@
+import {chatRoutes,chatStatus} from './lib/chat.mjs';
 import { featureRoutes } from './lib/workspace-features.mjs';
 import http from 'node:http';
 import { readFile, realpath } from 'node:fs/promises';
@@ -123,9 +124,10 @@ export async function createApp({
     if (!Number.isSafeInteger(body.version) || body.version !== current.version) throw new AppError(409, '다른 직원이 먼저 수정했습니다. 최신 내용을 확인한 후 다시 시도해 주세요.');
   }
 
+  const chat = chatRoutes({db,auth,json,changed,publish});
   const features = featureRoutes({db,auth,json,changed,publish});
   async function api(req, res, url) {
-    if (await features(req,res,url)) return;
+    if (await chat(req,res,url) || await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
     if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized() });
     if (route === '/api/setup' && method === 'POST') {
@@ -181,13 +183,13 @@ export async function createApp({
       return json(res, 200, { ok: true });
     }
     if (route === '/api/state' && method === 'GET') {
-      await auth(req);
+      const user=await auth(req);
       const result = await db.transaction(async connection => {
         const users = await connection.all('SELECT id,name,username FROM users ORDER BY name,id');
         const items = (await connection.all(`${itemQuery} ORDER BY items.date,${db.itemOrder}`)).map(itemRow);
         const messages = (await connection.all(db.messageQuery)).map(messageRow), stock = Object.create(null);
         for (const item of items) if (item.type === 'inbound' && item.done) stock[item.title] = (stock[item.title] || 0) + item.qty;
-        return { users, items, messages, stock, revision: await revision(connection) };
+        return { users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
       }, { readOnly: true });
       return json(res, 200, result);
     }
@@ -240,7 +242,7 @@ export async function createApp({
         await connection.run('INSERT INTO messages(id,user_id,text,created_at) VALUES(?,?,?,?)', [id, user.id, text, createdAt]);
         await changed(connection);
       });
-      await publish(); return json(res, 201, { message: messageRow({ id, user_id: user.id, name: user.name, text, created_at: createdAt }) });
+      await publish(); return json(res, 201, { message: messageRow(await db.get(`SELECT m.*,m.${db.kind==='postgres'?'seq':'rowid'} AS message_sequence,u.name FROM messages m JOIN users u ON u.id=m.user_id WHERE m.id=?`,[id])) });
     }
     if (route === '/api/invitations' && method === 'GET') {
       await auth(req);

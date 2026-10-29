@@ -80,4 +80,34 @@ for(const engine of engines){
   await f.request('/api/resources/'+first,{method:'DELETE',user:f.admin});assert.equal((await f.request('/api/resources',{method:'POST',user:f.admin,body})).status,201);
  });
 
+ test(engine+': chat unread state is personal, durable and never rewinds',async t=>{
+  const f=await fixture(t,engine);
+  const first=(await f.request('/api/messages',{method:'POST',user:f.admin,body:{text:'첫 번째 알림'}})).data.message;
+  assert.ok(first.sequence>0);
+  assert.equal((await f.request('/api/state',{user:f.member})).data.chat.unread,1);
+  assert.equal((await f.request('/api/state',{user:f.admin})).data.chat.unread,0);
+  await f.request('/api/messages',{method:'POST',user:f.member,body:{text:'직접 보낸 메시지'}});
+  const second=(await f.request('/api/messages',{method:'POST',user:f.admin,body:{text:'두 번째 알림'}})).data.message;
+  assert.equal((await f.request('/api/state',{user:f.member})).data.chat.unread,2);
+  assert.equal((await f.request('/api/chat/read',{method:'POST',user:f.member,body:{through:first.sequence}})).data.chat.unread,1);
+  await f.request('/api/chat/read',{method:'POST',user:f.member,body:{through:0}});
+  assert.equal((await f.request('/api/state',{user:f.member})).data.chat.readThrough,first.sequence);
+  await f.restart();assert.equal((await f.request('/api/state',{user:f.member})).data.chat.unread,1);
+  await f.request('/api/chat/read',{method:'POST',user:f.member,body:{through:second.sequence,userId:f.admin.user.id}});
+  assert.equal((await f.request('/api/state',{user:f.member})).data.chat.unread,0);
+  assert.equal((await f.request('/api/state',{user:f.admin})).data.chat.unread,1,'reading cannot modify another account cursor');
+  const unauth=await f.request('/api/chat/read',{method:'POST',body:{through:second.sequence}});assert.equal(unauth.status,401);
+  const invalid=await f.request('/api/chat/read',{method:'POST',user:f.member,body:{through:-1}});assert.equal(invalid.status,422);
+  const forged=await f.request('/api/chat/read',{method:'POST',user:{...f.member,csrfToken:'invalid'},body:{through:second.sequence}});assert.equal(forged.status,403);
+  await f.request('/api/chat/read',{method:'POST',user:f.member,body:{through:1000000}});
+  const latest=(await f.request('/api/state',{user:f.member})).data.chat;assert.equal(latest.readThrough,latest.latest,'cannot acknowledge unsent future messages');
+ });
+ test(engine+': unread counts cover messages outside the recent history window',async t=>{
+  const f=await fixture(t,engine);await f.insertMessages();
+  const before=(await f.request('/api/state',{user:f.member})).data;
+  assert.equal(before.messages.length,500);assert.equal(before.chat.unread,502);
+  await f.request('/api/chat/read',{method:'POST',user:f.member,body:{through:before.chat.latest}});
+  assert.equal((await f.request('/api/state',{user:f.member})).data.chat.unread,0);
+ });
+
 }

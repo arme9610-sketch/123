@@ -1,3 +1,4 @@
+import {createChatWidget} from './chat-widget.js';
 import { dueReminders, reminderKey, seoulDate } from './reminders.js';
 const $ = selector => document.querySelector(selector);
 let today = seoulDate();
@@ -39,11 +40,11 @@ function toast(text) {
   toastTimer = setTimeout(() => $('#toast').classList.remove('show'), 3500);
 }
 function connection(text, connected = false) {
-  $('#connection').textContent = text;
+  $('#connection').textContent = text;chatWidget.setConnection(text);
   $('#connection').classList.toggle('connected', connected);
 }
 function signedOut(message = '') {
-  eventStream?.close(); eventStream = null;
+  eventStream?.close(); eventStream = null;chatWidget.clear();
   closeDesktopNotifications();toggleReminders(false);$('#reminder-panel').replaceChildren();$('#reminder-count').hidden=true;
   currentUser = null; csrfToken = ''; state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
   invitations = []; inviteResult = null; page = '오늘';searches={};collectionData={};chatSearchActive=false;collectionRequest++;
@@ -91,7 +92,7 @@ async function refreshState() {
     do {
       refreshAgain = false;
       const next = await api('/api/state');
-      if (currentUser?.id === userId && next.revision >= state.revision) { state = next; render();checkBrowserReminders(); }
+      if (currentUser?.id === userId && next.revision >= state.revision) { state = next; render();chatWidget.update();checkBrowserReminders(); }
     } while (refreshAgain && currentUser?.id === userId);
   })();
   try { await fetchingState; } finally { fetchingState = null; }
@@ -101,6 +102,7 @@ async function startWorkspace() {
   $('#boot').hidden = true; $('#auth-screen').hidden = true; $('#auth-screen').replaceChildren();
   $('#workspace-screen').hidden = false;
   connectEvents();
+  if(location.hash==='#chat'){history.replaceState(null,'',location.pathname+location.search);chatWidget.open();}
   if(location.hash==='#reminders'){history.replaceState(null,'',location.pathname+location.search);toggleReminders(true);}
 }
 function connectEvents() {
@@ -164,7 +166,7 @@ if(page==='오늘'){html=heading(`좋은 하루예요, ${esc(currentUser.name)}�
 }else if(page==='업무'){const items=state.items.filter(i=>i.type==='task'&&(taskTab!=='내 업무'||i.ownerId===currentUser.id));html=heading('업무를 함께, 차근차근','담당자와 마감일을 정하고 진행 상황을 공유하세요.',`<button class="primary" data-new="task">＋ 업무 요청</button>`)+`<div class="tabs">${['전체 업무','내 업무','부탁한 업무'].map(t=>`<button data-tab="${t}" class="${taskTab===t?'selected':''}">${t}</button>`).join('')}</div><section class="panel">${(taskTab==='부탁한 업무'?items.filter(i=>i.requesterId===currentUser.id):items).map(row).join('')||empty('아직 등록된 업무가 없어요.')}</section>`;
 }else if(page==='입고 · 재고'||page==='택배 발송'){let type=page==='택배 발송'?'shipment':'inbound';html=heading(page==='택배 발송'?'꼼꼼하게, 택배 발송':'미리 보는 입고, 정확한 재고',type==='shipment'?'발송 예정부터 운송장까지 한곳에서 관리하세요.':'입고 예정 수량은 실제 입고를 완료한 뒤 재고에 반영됩니다.',`<button class="primary" data-new="${type}">＋ ${type==='shipment'?'발송':'입고'} 등록</button>`)+`<section class="panel">${table(state.items.filter(i=>i.type===type))}</section>`+(type==='inbound'?`<section class="panel stock"><div class="panel-head"><h2>입고 완료 재고</h2><span class="muted">등록된 입고의 누적 수량 · 출고 차감 미지원</span></div>${Object.entries(state.stock).map(([k,v])=>`<div class="stock-row"><b>${esc(k)}</b><span>${v}개</span></div>`).join('')||empty('입고를 완료하면 확인된 수량이 이곳에 표시됩니다.')}</section>`:'');
 }else if(page==='사용자'){html=teamSettings();}else if(page==='아카이브'){html=archivePage();}else if(['매뉴얼','자료실'].includes(page)){html=libraryPage(page);}else{html=chatPage();}
-$('#main').innerHTML=html;restoreDraft(preserved);
+$('#main').innerHTML=html;restoreDraft(preserved);chatWidget.refreshView();
 }
 function empty(t){return `<div class="empty">${t}</div>`}
 function filtered(){return state.items.filter(i=>filter==='전체'||types[i.type][0]===filter)}
@@ -367,7 +369,7 @@ function messageMarkup(message) {
  return `<div class="message"><span class="avatar">${esc(message.name[0])}</span><div><small>${esc(message.name)} · ${esc(dateLabel(message.createdAt))}</small><p>${esc(message.text)}</p></div></div>`;
 }
 function chatPage() {
- return heading('이야기가 이어지는 곳','대화와 지난 기록을 한곳에서 확인하세요.')+`<section class="panel chat"><div class="panel-head"><h2>모두의 대화</h2><span class="muted">${chatSearchActive?'전체 대화 기록 검색':'최근 대화 500개'}</span></div>${searchFields('채팅')}<div class="messages">${chatSearchActive?collectionBody('채팅',messageMarkup):(state.messages.map(messageMarkup).join('')||empty('첫 번째 이야기를 남겨보세요.'))}</div><form id="chat-form"><input name="message" required maxlength="2000" placeholder="메시지를 입력하세요" aria-label="메시지"><button class="primary">보내기 ↗</button></form></section>`;
+ return heading('이야기가 이어지는 곳','대화와 지난 기록을 한곳에서 확인하세요.')+`<section class="panel chat"><div class="panel-head"><h2>모두의 대화</h2><span class="muted">${chatSearchActive?'전체 대화 기록 검색':'최근 대화 500개'}</span></div>${searchFields('채팅')}<div class="messages" ${chatSearchActive?'data-filtered-chat="true"':''}>${chatSearchActive?collectionBody('채팅',messageMarkup):(state.messages.map(messageMarkup).join('')||empty('첫 번째 이야기를 남겨보세요.'))}</div><form id="chat-form"><input name="message" required maxlength="2000" placeholder="메시지를 입력하세요" aria-label="메시지"><button class="primary">보내기 ↗</button></form></section>`;
 }
 let manualEditing=null;
 function openLibrary(kind,id=null) {
@@ -429,7 +431,7 @@ function saveReminderPreferences(value,userId = currentUser?.id) {
 function toggleReminders(open = $('#reminder-panel').hidden) {
   $('#reminder-panel').hidden = !open;
   $('#reminder-toggle').setAttribute('aria-expanded', String(open));
-  if(open && currentUser) renderReminders();
+  if(open && currentUser){chatWidget.close();renderReminders();}
 }
 function notificationSupport() { return 'Notification' in window && window.isSecureContext; }
 function renderReminders() {
@@ -462,7 +464,7 @@ async function reminderClick(button) {
     if(requestingReminderPermission)return true;
     const targetUserId=currentUser.id;
     const prefs=reminderPreferences();
-    if(prefs.enabled){prefs.enabled=false;saveReminderPreferences(prefs);await closeDesktopNotifications();renderReminders();return true;}
+    if(prefs.enabled){prefs.enabled=false;saveReminderPreferences(prefs);await closeDesktopNotifications(false);renderReminders();return true;}
     if(!notificationSupport()){toast('앱 안의 알림 목록을 이용해 주세요.');return true;}
     button.disabled=true;requestingReminderPermission=true;
     try{
@@ -515,10 +517,10 @@ async function dispatchBrowserReminders() {
     toast('브라우저 알림을 보내지 못했어요. 앱 안의 알림 목록에서 확인해 주세요.');
   }finally{if(!delivered){const current=reminderPreferences(userId);current.sent=oldSent;saveReminderPreferences(current,userId);}dispatchingReminders=false;}
 }
-async function closeDesktopNotifications() {
+async function closeDesktopNotifications(all = true) {
   for(const notification of desktopNotifications)notification.close();desktopNotifications.clear();
   if('serviceWorker' in navigator){
-    try{const registration=await navigator.serviceWorker.getRegistration('/sw.js');if(registration)for(const notification of await registration.getNotifications())notification.close();}catch{/* In-app state is cleared independently. */}
+    try{const registration=await navigator.serviceWorker.getRegistration('/sw.js');if(registration)for(const notification of await registration.getNotifications(all?{}:{tag:'dayon-due-'+currentUser?.id}))notification.close();}catch{/* In-app state is cleared independently. */}
   }
 }
 document.addEventListener('click',event=>{
@@ -537,4 +539,5 @@ setInterval(()=>{
 },60000);
 window.addEventListener('storage',event=>{if(currentUser&&event.key==='dayon-reminders-'+currentUser.id)renderReminders();});
 
+const chatWidget=createChatWidget({api,escape:esc,getUser:()=>currentUser,getState:()=>state,getPage:()=>page,refresh:refreshState,openFullChat:()=>navigate('채팅'),onOpen:()=>toggleReminders(false),toast});
 initialize();
