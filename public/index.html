@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#337b5e">
+  <title>데이온 DAYON · 우리 팀의 하루</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="boot" class="boot" role="status">우리 팀의 공간을 불러오고 있어요…</div>
+  <section id="auth-screen" class="auth-screen" hidden></section>
+  <div id="workspace-screen" hidden>
+    <aside>
+      <a class="brand" href="/">데이온<span>DAYON workspace</span></a>
+      <div class="workspace"><b>우리 회사</b><small id="team-size">팀 워크스페이스</small></div>
+      <nav id="nav" aria-label="주 메뉴"></nav>
+      <div class="aside-bottom"><span class="online"></span> 모든 업무가 한곳에
+        <div class="profile"><div class="avatar" id="profile-avatar"></div><div><b id="profile-name"></b><small id="profile-role"></small></div></div>
+        <button id="logout" class="logout">로그아웃</button>
+      </div>
+    </aside>
+    <div class="shell">
+      <header><span>워크스페이스 <i>/</i> <b id="breadcrumb">오늘</b></span><div><span id="connection" class="connection" role="status">연결 중</span><button id="add-top" class="primary">＋ 새로 만들기</button></div></header>
+      <main id="main"></main>
+      <footer>작은 팀의 큰 흐름, 데이온 <span>함께하는 오늘을 더 가볍게.</span></footer>
+    </div>
+  </div>
+  <dialog id="dialog">
+    <form id="form">
+      <div class="dialog-title"><h2 id="form-title">새 일정</h2><button type="button" id="close" aria-label="닫기">✕</button></div>
+      <label>내용<input name="title" required maxlength="100" placeholder="어떤 일을 함께할까요?"></label>
+      <div class="form-row"><label>구분<select name="type"><option value="task">업무</option><option value="inbound">입고</option><option value="shipment">택배 발송</option><option value="meeting">공통 일정</option></select></label><label>날짜<input name="date" type="date" min="2000-01-01" max="2200-12-31" required></label></div>
+      <div class="form-row"><label>담당자<select name="ownerId" required></select></label><label>수량<input name="qty" type="number" min="1" max="1000000" value="1" required></label></div>
+      <label>메모<textarea name="note" maxlength="2000" placeholder="입고 품목 또는 전달할 내용을 입력하세요."></textarea></label>
+      <label>운송장 번호 (택배 발송)<input name="tracking" maxlength="100" placeholder="택배사와 운송장 번호"></label>
+      <p class="privacy">등록한 내용은 로그인한 우리 팀 직원들이 함께 볼 수 있어요.</p>
+      <p id="form-error" class="form-error" role="alert"></p>
+      <button class="primary submit">저장하기</button>
+    </form>
+  </dialog>
+  <div id="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

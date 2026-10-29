@@ -1,0 +1,27 @@
+# Review-only example: a free Render subdomain with PAID compute + persistent disk.
+# This file does not create resources. Review current prices before importing.
+services:
+  - type: web
+    name: dayon-arme
+    runtime: node
+    region: singapore
+    plan: starter
+    buildCommand: npm run check
+    startCommand: npm start
+    healthCheckPath: /api/status
+    numInstances: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: MOA_DATA_DIR
+        value: /var/data/dayon
+      - key: MOA_SECURE_COOKIE
+        value: "1"
+      - key: MOA_SETUP_TOKEN
+        generateValue: true
+    disk:
+      name: dayon-data
+      mountPath: /var/data
+      sizeGB: 1

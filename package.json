@@ -1,0 +1,13 @@
+{
+  "name": "dayon",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "check": "node --check public/app.js && node --check server.mjs && node --check lib/database.mjs && node --check lib/security.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": { "node": ">=24" }
+}
