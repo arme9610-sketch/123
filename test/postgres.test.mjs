@@ -122,7 +122,7 @@ test('PostgreSQL: only one administrator can be created during concurrent first-
   const admin = authOf(responses.find(result => result.status === 201));
   const state = await f.request('/api/state', { auth: admin });
   assert.equal(state.data.users.length, 1);
-  assert.equal(state.data.users[0].role, 'admin');
+  assert.equal(state.data.users[0].role, undefined);
   assert.deepEqual(await readdir(f.dataDir), [], 'PostgreSQL state stays outside the ephemeral application filesystem.');
 });
 
@@ -182,8 +182,8 @@ test('PostgreSQL: simultaneous invitations cannot reserve more than four staff s
   assert.equal(joins.filter(result => result.status === 201).length, 1, 'A token can be consumed by only one concurrent request.');
   assert.ok(joins.some(result => result.status === 409 || result.status === 403));
   const member = authOf(joins.find(result => result.status === 201));
-  assert.equal((await f.request('/api/invitations', { auth: member })).status, 403);
-  assert.equal((await f.request('/api/invitations', { method: 'POST', auth: member, body: { username: 'forbidden', name: '초대 금지' } })).status, 403);
+  assert.equal((await f.request('/api/invitations', { auth: member })).status, 200);
+  assert.equal((await f.request('/api/invitations', { method: 'POST', auth: member, body: { username: 'over_limit', name: '정원 초과' } })).status, 409);
   for (const invite of accepted.slice(1)) assert.equal((await f.request('/api/join', { method: 'POST', body: { inviteToken: invite.data.inviteToken, password } })).status, 201);
   assert.equal((await f.request('/api/state', { auth: member })).data.users.length, 4);
 });

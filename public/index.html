@@ -3,27 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#337b5e">
-  <title>데이온 DAYON · 우리 팀의 하루</title>
+  <meta name="theme-color" content="#0071e3">
+  <title>데이온 DAYON · 함께하는 하루</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div id="boot" class="boot" role="status">우리 팀의 공간을 불러오고 있어요…</div>
+  <div id="boot" class="boot" role="status">데이온을 불러오고 있어요…</div>
   <section id="auth-screen" class="auth-screen" hidden></section>
   <div id="workspace-screen" hidden>
     <aside>
-      <a class="brand" href="/">데이온<span>DAYON workspace</span></a>
-      <div class="workspace"><b>우리 회사</b><small id="team-size">팀 워크스페이스</small></div>
+      <a class="brand" href="/">데이온<span>ARME WORKSPACE</span></a>
+      <div class="workspace"><b>ARME</b><small id="team-size">공유 워크스페이스</small></div>
       <nav id="nav" aria-label="주 메뉴"></nav>
       <div class="aside-bottom"><span class="online"></span> 모든 업무가 한곳에
-        <div class="profile"><div class="avatar" id="profile-avatar"></div><div><b id="profile-name"></b><small id="profile-role"></small></div></div>
+        <div class="profile"><div class="avatar" id="profile-avatar"></div><div><b id="profile-name"></b></div></div>
         <button id="logout" class="logout">로그아웃</button>
       </div>
     </aside>
     <div class="shell">
       <header><span>워크스페이스 <i>/</i> <b id="breadcrumb">오늘</b></span><div><span id="connection" class="connection" role="status">연결 중</span><button id="add-top" class="primary">＋ 새로 만들기</button></div></header>
       <main id="main"></main>
-      <footer>작은 팀의 큰 흐름, 데이온 <span>함께하는 오늘을 더 가볍게.</span></footer>
+      <footer>함께하는 하루, 데이온 <span>함께하는 오늘을 더 가볍게.</span></footer>
     </div>
   </div>
   <dialog id="dialog">
@@ -34,7 +34,7 @@
       <div class="form-row"><label>담당자<select name="ownerId" required></select></label><label>수량<input name="qty" type="number" min="1" max="1000000" value="1" required></label></div>
       <label>메모<textarea name="note" maxlength="2000" placeholder="입고 품목 또는 전달할 내용을 입력하세요."></textarea></label>
       <label>운송장 번호 (택배 발송)<input name="tracking" maxlength="100" placeholder="택배사와 운송장 번호"></label>
-      <p class="privacy">등록한 내용은 로그인한 우리 팀 직원들이 함께 볼 수 있어요.</p>
+      <p class="privacy">등록한 내용은 로그인한 모든 사용자가 함께 볼 수 있어요.</p>
       <p id="form-error" class="form-error" role="alert"></p>
       <button class="primary submit">저장하기</button>
     </form>
@@ -49,7 +49,7 @@
     <div class="dialog-title"><h2>자료 올리기</h2><button type="button" data-close-dialog="resource-dialog" aria-label="닫기">✕</button></div>
     <label>제목<input name="title" required maxlength="100"></label><label>분류<input name="category" required maxlength="40" value="일반"></label>
     <label>파일<input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.csv,.xls,.xlsx,.doc,.docx,.ppt,.pptx,.zip" required></label>
-    <p class="privacy">파일당 5MB, 자료실 전체 25MB까지 올릴 수 있어요. 로그인한 팀원들이 내려받을 수 있습니다.</p>
+    <p class="privacy">파일당 5MB, 자료실 전체 25MB까지 올릴 수 있어요. 모든 사용자가 내려받을 수 있습니다.</p>
     <p id="resource-error" class="form-error" role="alert"></p><button type="submit" class="primary submit">자료 저장</button>
   </form></dialog>
   <div id="toast" role="status"></div>

@@ -11,7 +11,7 @@ import { token, hash, safeEqual, passwordHash, verifyPassword, AppError, require
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const sessionAge = 7 * 24 * 60 * 60 * 1000;
 const invitationAge = 24 * 60 * 60 * 1000;
-const sessionQuery = 'SELECT sessions.*,users.id,users.name,users.username,users.role FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires_at>?';
+const sessionQuery = 'SELECT sessions.*,users.id,users.name,users.username FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires_at>?';
 
 export async function createApp({
   dataDir = process.env.MOA_DATA_DIR || path.join(projectRoot, 'data'),
@@ -89,11 +89,6 @@ export async function createApp({
     }
     return user;
   }
-  async function admin(req, write = false) {
-    const user = await auth(req, write);
-    if (user.role !== 'admin') throw new AppError(403, '관리자만 사용할 수 있습니다.');
-    return user;
-  }
   function limit(req) {
     const key = req.socket.remoteAddress || 'unknown', now = Date.now();
     let hit = attempts.get(key);
@@ -128,7 +123,7 @@ export async function createApp({
     if (!Number.isSafeInteger(body.version) || body.version !== current.version) throw new AppError(409, '다른 직원이 먼저 수정했습니다. 최신 내용을 확인한 후 다시 시도해 주세요.');
   }
 
-  const features = featureRoutes({db,auth,admin,json,changed,publish});
+  const features = featureRoutes({db,auth,json,changed,publish});
   async function api(req, res, url) {
     if (await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
@@ -188,7 +183,7 @@ export async function createApp({
     if (route === '/api/state' && method === 'GET') {
       await auth(req);
       const result = await db.transaction(async connection => {
-        const users = await connection.all('SELECT id,name,username,role FROM users ORDER BY created_at,id');
+        const users = await connection.all('SELECT id,name,username FROM users ORDER BY name,id');
         const items = (await connection.all(`${itemQuery} ORDER BY items.date,${db.itemOrder}`)).map(itemRow);
         const messages = (await connection.all(db.messageQuery)).map(messageRow), stock = Object.create(null);
         for (const item of items) if (item.type === 'inbound' && item.done) stock[item.title] = (stock[item.title] || 0) + item.qty;
@@ -248,12 +243,12 @@ export async function createApp({
       await publish(); return json(res, 201, { message: messageRow({ id, user_id: user.id, name: user.name, text, created_at: createdAt }) });
     }
     if (route === '/api/invitations' && method === 'GET') {
-      await admin(req);
+      await auth(req);
       const invitations = (await db.all(`SELECT id,name,username,expires_at FROM invitations WHERE expires_at>? ORDER BY ${db.invitationOrder}`, [Date.now()])).map(i => ({ id: i.id, name: i.name, username: i.username, expiresAt: new Date(Number(i.expires_at)).toISOString() }));
       return json(res, 200, { invitations });
     }
     if (route === '/api/invitations' && method === 'POST') {
-      await admin(req, true);
+      await auth(req, true);
       const body = await jsonBody(req), name = requireText(body.name, '이름', 30), username = validateUsername(body.username), inviteToken = token(), expiresAt = Date.now() + invitationAge;
       await db.transaction(async connection => {
         await checkCapacity(connection);
@@ -265,7 +260,7 @@ export async function createApp({
     }
     const inviteMatch = route.match(/^\/api\/invitations\/([^/]+)$/);
     if (inviteMatch && method === 'DELETE') {
-      await admin(req, true);
+      await auth(req, true);
       await db.transaction(async connection => {
         const result = await connection.run('DELETE FROM invitations WHERE id=?', [inviteMatch[1]]);
         if (!result.changes) throw new AppError(404, '초대를 찾을 수 없습니다.');

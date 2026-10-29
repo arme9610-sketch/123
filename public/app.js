@@ -52,15 +52,15 @@ function signedOut(message = '') {
 function showAuth(mode, error = '') {
   authMode = mode; $('#boot').hidden = true; $('#auth-screen').hidden = false;
   const setup = mode === 'setup', join = mode === 'join';
-  $('#auth-screen').innerHTML = `<div class="auth-intro"><a class="brand" href="/">데이온<span>DAYON workspace</span></a><h1>우리 팀의 하루를,<br>데이온에서 함께.</h1><p>업무, 일정, 입고와 택배 발송까지.<br>함께 보고 함께 움직이는 우리 회사의 공간입니다.</p><div class="auth-art">✦<span>TEAM WORKSPACE</span></div></div>
-    <div class="auth-card"><p class="eyebrow">WELCOME TO DAYON</p><h2>${setup ? '우리 회사 공간 만들기' : join ? '우리 팀에 합류하기' : '다시 만나 반가워요'}</h2><p class="subtitle">${setup ? '관리자 계정으로 팀의 첫 시작을 준비하세요.' : join ? '관리자가 전달한 초대로 직원 계정을 만드세요.' : '직원 계정으로 로그인해 오늘의 흐름을 확인하세요.'}</p>
+  $('#auth-screen').innerHTML = `<div class="auth-intro"><a class="brand" href="/">데이온<span>ARME WORKSPACE</span></a><h1>모두의 하루를,<br>데이온에서 함께.</h1><p>업무, 일정, 입고와 택배 발송까지.<br>함께 보고 함께 움직이는 우리 회사의 공간입니다.</p><div class="auth-art">✦<span>ARME WORKSPACE</span></div></div>
+    <div class="auth-card"><p class="eyebrow">WELCOME TO DAYON</p><h2>${setup ? '우리 회사 공간 만들기' : join ? '함께 시작하기' : '다시 만나 반가워요'}</h2><p class="subtitle">${setup ? '첫 계정을 만들고 함께 시작하세요.' : join ? '전달받은 초대로 계정을 만드세요.' : '로그인하고 오늘의 흐름을 확인하세요.'}</p>
     <form id="auth-form">
       ${setup ? '<label>초기 설정 키<input name="setupToken" type="password" autocomplete="off" required placeholder="서버의 초기 설정 키"></label><label>이름<input name="name" required maxlength="30" autocomplete="name" placeholder="표시할 이름"></label>' : ''}
-      ${join ? `<label>직원 초대 코드<input name="inviteToken" type="password" autocomplete="off" required value="${esc(inviteToken)}" placeholder="관리자에게 받은 코드"></label>` : '<label>아이디<input name="username" autocomplete="username" required minlength="3" maxlength="40" pattern="[a-zA-Z0-9_.-]+" placeholder="영문, 숫자 3~40자"></label>'}
+      ${join ? `<label>직원 초대 코드<input name="inviteToken" type="password" autocomplete="off" required value="${esc(inviteToken)}" placeholder="전달받은 초대 코드"></label>` : '<label>아이디<input name="username" autocomplete="username" required minlength="3" maxlength="40" pattern="[a-zA-Z0-9_.-]+" placeholder="영문, 숫자 3~40자"></label>'}
       <label>${setup || join ? '새 비밀번호' : '비밀번호'}<input name="password" type="password" autocomplete="${setup || join ? 'new-password' : 'current-password'}" required minlength="10" maxlength="128" placeholder="${setup || join ? '10자 이상의 비밀번호' : '비밀번호를 입력하세요'}"></label>
       ${setup || join ? '<label>비밀번호 확인<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="비밀번호를 한 번 더 입력하세요"></label>' : ''}
       <p id="auth-error" class="form-error" role="alert">${esc(error)}</p><button class="primary submit">${setup ? '워크스페이스 시작하기' : join ? '가입하고 시작하기' : '로그인'}</button>
-    </form>${setup ? '<p class="auth-note">초기 설정 키는 서버의 data/setup-token 파일 또는 서버 관리자가 설정한 키를 사용하세요. 관리자 생성 후에는 사용할 수 없습니다.</p>' : `<button class="auth-switch" data-auth="${join ? 'login' : 'join'}">${join ? '이미 계정이 있나요? 로그인' : '직원 초대를 받으셨나요? 계정 만들기'}</button>`}</div>`;
+    </form>${setup ? '<p class="auth-note">초기 설정 키는 서버의 data/setup-token 파일 또는 서버에 설정한 키를 사용하세요. 첫 계정 생성 후에는 사용할 수 없습니다.</p>' : `<button class="auth-switch" data-auth="${join ? 'login' : 'join'}">${join ? '이미 계정이 있나요? 로그인' : '직원 초대를 받으셨나요? 계정 만들기'}</button>`}</div>`;
 }
 async function authenticate(form) {
   const data = Object.fromEntries(new FormData(form));
@@ -105,7 +105,7 @@ function connectEvents() {
   connection('실시간 연결 중');
   stream.onopen = () => connection('실시간 연결됨', true);
   stream.addEventListener('change', () => {
-    refreshState().then(() => { if (collections[page]) loadCollection(page); if (currentUser?.role === 'admin' && page === '팀 관리') return refreshInvitations(); }).catch(error => { if (currentUser) connection('동기화 지연 · 재연결 중'); });
+    refreshState().then(() => { if (collections[page]) loadCollection(page); if (page === '사용자') return refreshInvitations(); }).catch(error => { if (currentUser) connection('동기화 지연 · 재연결 중'); });
   });
   stream.onerror = async () => {
     if (eventStream !== stream || !currentUser) return;
@@ -113,41 +113,53 @@ function connectEvents() {
     try { await api('/api/session'); } catch { /* 401 transitions to login; network failure will reconnect. */ }
   };
 }
-const icons = ['◫', '☑', '▦', '▤', '▧', '◌', '▣', '▤', '▧', '⚙'];
+const iconPaths={
+ '오늘':'M3 10 12 3l9 7v10H3Z M9 20v-7h6v7',
+ '업무':'M8 5H5v16h14V5h-3 M8 3h8v5H8Z M8 13l2 2 5-5',
+ '공용 달력':'M4 5h16v16H4Z M8 3v4 M16 3v4 M4 10h16',
+ '입고 · 재고':'M3 7 12 3l9 4v11l-9 4-9-4Z M3 7l9 4 9-4 M12 11v11',
+ '택배 발송':'M3 6h11v12H3Z M14 10h4l3 4v4h-7 M6 18a2 2 0 1 0 4 0 M15 18a2 2 0 1 0 4 0',
+ '채팅':'M21 11a8 8 0 0 1-8 8H8l-5 3 1-6a8 8 0 1 1 17-5Z M8 10h8 M8 14h5',
+ '아카이브':'M3 4h18v5H3Z M5 9v12h14V9 M9 13h6',
+ '매뉴얼':'M12 5C8 2 4 3 2 4v16c4-2 7-1 10 1 3-2 6-3 10-1V4c-2-1-6-2-10 1Z M12 5v16',
+ '자료실':'M3 7h7l2-3h9v17H3Z M3 7v-3h7',
+ '사용자':'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4 21v-2a8 8 0 0 1 16 0v2'
+};
+function icon(name){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${iconPaths[name]||iconPaths['업무']}"/></svg>`;}
 function nav() {
-  const pages = ['오늘', '업무', '공용 달력', '입고 · 재고', '택배 발송', '팀 채팅', '아카이브', '매뉴얼', '자료실', ...(currentUser.role === 'admin' ? ['팀 관리'] : [])];
-  $('#nav').innerHTML = pages.map((p, i) => `<button class="${page === p ? 'active' : ''}" data-page="${p}"><span aria-hidden="true">${icons[i]}</span>${p}</button>`).join('');
+  const pages = ['오늘', '업무', '공용 달력', '입고 · 재고', '택배 발송', '채팅', '아카이브', '매뉴얼', '자료실', '사용자'];
+  $('#nav').innerHTML = pages.map((p, i) => `<button class="${page === p ? 'active' : ''}" data-page="${p}"><span aria-hidden="true">${icon(p)}</span>${p}</button>`).join('');
   $('#breadcrumb').textContent = page;
   $('#profile-avatar').textContent = currentUser.name[0];
   $('#profile-name').textContent = currentUser.name;
-  $('#profile-role').textContent = currentUser.role === 'admin' ? '워크스페이스 관리자' : '팀 멤버';
-  $('#team-size').textContent = `팀 워크스페이스 · ${state.users.length}명`;
+
+  $('#team-size').textContent = `함께하는 사람 · ${state.users.length}명`;
 }
 function renderTeam() {
-  return `<div class="members">${state.users.map((user, i) => `<div><div class="avatar av${i}">${esc(user.name[0])}</div><b>${esc(user.name)}</b><small>${user.id === currentUser.id ? '나 · ' : ''}${user.role === 'admin' ? '관리자' : '팀 멤버'}</small></div>`).join('')}</div>`;
+  return `<div class="members">${[...state.users].sort((a,b)=>a.name.localeCompare(b.name,'ko')).map((user, i) => `<div><div class="avatar av${i}">${esc(user.name[0])}</div><b>${esc(user.name)}</b></div>`).join('')}</div>`;
 }
 function teamSettings() {
-  return heading('함께할 팀원을 초대하세요', '직원별 계정으로 안전하게 접속하고, 같은 업무와 일정을 공유하세요.') +
-    `<section class="panel"><div class="panel-head"><h2>우리 팀</h2><span class="muted">${state.users.length} / 4명 가입</span></div>${renderTeam()}</section>
+  return heading('함께하는 사람들', '직원별 계정으로 안전하게 접속하고, 업무와 일정을 함께 나누세요.') +
+    `<section class="panel"><div class="panel-head"><h2>함께하는 사람들</h2><span class="muted">${state.users.length} / 4명 가입</span></div>${renderTeam()}</section>
     <section class="panel invite-panel"><div class="panel-head"><h2>직원 초대</h2><span class="muted">초대는 24시간 동안 유효해요</span></div>
-    ${state.users.length + invitations.length >= 4 ? '<div class="empty">팀 정원 4명에 도달했어요. 대기 중인 초대도 정원에 포함됩니다.</div>' : '<form id="invite-form" class="invite-form"><label>직원 이름<input name="name" required maxlength="30" placeholder="초대할 직원 이름"></label><label>로그인 아이디<input name="username" required minlength="3" maxlength="40" pattern="[a-zA-Z0-9_.-]+" placeholder="영문, 숫자 3~40자"></label><button class="primary">초대 만들기</button></form>'}
+    ${state.users.length + invitations.length >= 4 ? '<div class="empty">사용자 정원 4명에 도달했어요. 대기 중인 초대도 정원에 포함됩니다.</div>' : '<form id="invite-form" class="invite-form"><label>직원 이름<input name="name" required maxlength="30" placeholder="초대할 직원 이름"></label><label>로그인 아이디<input name="username" required minlength="3" maxlength="40" pattern="[a-zA-Z0-9_.-]+" placeholder="영문, 숫자 3~40자"></label><button class="primary">초대 만들기</button></form>'}
     ${inviteResult ? `<div class="invite-result"><b>${esc(inviteResult.name)}님 초대가 준비되었어요.</b><p>초대 링크를 직원에게 직접 전달해 주세요. 직원이 자신의 비밀번호를 설정합니다.</p><div class="copy-row"><input id="invite-link" readonly aria-label="직원 초대 링크" value="${esc(location.origin + '/#invite=' + encodeURIComponent(inviteResult.inviteToken))}"><button id="copy-invite" class="primary">복사</button></div><small>이 링크는 지금만 확인할 수 있어요. 분실하면 초대를 취소하고 다시 만들어 주세요.</small></div>` : ''}
     <div class="pending-invites">${invitations.length ? invitations.map(i => `<div class="pending-invite"><div><b>${esc(i.name)}</b><small>${esc(i.username)} · ${esc(new Date(i.expiresAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }))}까지</small></div><button data-revoke="${esc(i.id)}">초대 취소</button></div>`).join('') : empty('대기 중인 초대가 없습니다.')}</div></section>`;
 }
 async function refreshInvitations() {
   const result = await api('/api/invitations'); invitations = result.invitations;
-  if (page === '팀 관리' && currentUser) render();
+  if (page === '사용자' && currentUser) render();
 }
 
 function badge(i){return `<span class="badge ${types[i.type][1]}">${types[i.type][0]}</span>`}
 function row(i){return `<div class="item"><button class="check ${i.done?'checked':''}" data-done="${i.id}" aria-label="${esc(i.title)} ${i.done?'완료 취소':'완료 처리'}">${i.done?'✓':''}</button><div class="item-text"><b class="${i.done?'strike':''}">${esc(i.title)}</b><small>${esc(i.note)||'등록된 메모가 없습니다.'}</small></div>${badge(i)}<span class="person">${esc(i.owner)}</span><button class="dots" data-edit="${i.id}" aria-label="상세 보기">↗</button></div>`}
-function heading(title,sub,extra=''){return `<div class="heading"><div><p class="eyebrow">OUR TEAM, ONE FLOW</p><h1>${title}</h1><p class="subtitle">${sub}</p></div>${extra}</div>`}
+function heading(title,sub,extra=''){return `<div class="heading"><div><p class="eyebrow">EVERY DAY, IN SYNC</p><h1>${title}</h1><p class="subtitle">${sub}</p></div>${extra}</div>`}
 function render(){if(!currentUser)return;const preserved=captureDraft();nav();let html='';const due=state.items.filter(i=>i.date===today), pending=due.filter(i=>!i.done), completed=due.filter(i=>i.done).length;
-if(page==='오늘'){html=heading(`좋은 하루예요, ${esc(currentUser.name)}님 <span class="wave">☀</span>`,'오늘도 우리 팀의 하루를 한눈에 확인하세요.',`<div class="date-pill">${base.getFullYear()}년 ${base.getMonth()+1}월 ${base.getDate()}일 <b>${['일','월','화','수','목','금','토'][base.getDay()]}요일</b></div>`)+`<section class="welcome"><div><span class="tag">TEAM WORKSPACE</span><h2>함께하면, 오늘도 가볍게.</h2><p>할 일부터 입고와 발송까지.<br>우리 팀의 모든 흐름을 한눈에.</p><button data-page="공용 달력">팀 일정 살펴보기 <span>↗</span></button></div><div class="art" aria-hidden="true"><div class="art-card"><span>THIS IS OUR DAY</span><strong>${base.getDate()}</strong><div>✦ &nbsp; Make it happen</div></div><div class="art-check">✓</div><span class="spark">✦</span><div class="art-line"></div></div></section><section class="stats">${[['오늘 할 일',pending.filter(i=>i.type==='task').length,'건','blue','☑','업무'],['입고 예정',pending.filter(i=>i.type==='inbound').reduce((a,i)=>a+i.qty,0),'개','purple','↓','입고 · 재고'],['발송할 택배',pending.filter(i=>i.type==='shipment').length,'건','orange','▧','택배 발송'],['오늘 완료',completed,'건','green','✓','업무']].map(a=>`<button class="stat" data-page="${a[5]}"><div><span>${a[0]}</span><i class="${a[3]}">${a[4]}</i></div><strong>${a[1]}<small>${a[2]}</small></strong><p>${a[0]==='오늘 완료'?'차근차근 잘하고 있어요':'우리 팀이 함께 확인해요'} <span>↗</span></p></button>`).join('')}</section><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h2>오늘의 업무 <span>${due.filter(i=>i.type==='task').length}</span></h2><button data-page="업무">전체 보기 →</button></div>${due.filter(i=>i.type==='task').map(row).join('')||empty('오늘 등록된 업무가 없어요.')}<button class="add-row" data-new="task">＋ 새로운 업무 추가</button></section><section class="panel"><div class="panel-head"><h2>함께하는 팀</h2><span class="muted">${state.users.length}명의 멤버</span></div>${renderTeam()}<div class="team-note">${state.users.length<4&&currentUser.role==='admin'?'직원을 초대하고 함께 시작해 보세요.<button data-page="팀 관리">팀원 초대하기 ↗</button>':'작은 공유가 더 나은 협업을 만들어요.<button data-page="팀 채팅">팀 채팅 열기 ↗</button>'}</div></section></div><section class="panel schedule"><div class="panel-head"><h2>오늘의 입고 & 발송 <span>${due.filter(i=>['inbound','shipment'].includes(i.type)).length}</span></h2><button data-page="공용 달력">달력에서 보기 →</button></div>${table(due.filter(i=>['inbound','shipment'].includes(i.type)))}</section>`;
-}else if(page==='공용 달력'){html=heading('우리 팀의 일정','입고, 발송, 업무 일정을 함께 확인하고 준비하세요.',`<button class="primary" data-new="meeting">＋ 일정 등록</button>`)+`<section class="panel"><div class="calendar-toolbar"><div class="month-controls"><button id="prev" aria-label="이전 달">‹</button><h2>${month.getFullYear()}년 ${month.getMonth()+1}월</h2><button id="next" aria-label="다음 달">›</button><button id="this-month">이번 달</button></div><div class="segmented">${['달력','표'].map(v=>`<button data-view="${v}" class="${view===v?'selected':''}">${v}</button>`).join('')}</div></div><div class="filters">${['전체',...Object.values(types).map(v=>v[0])].map(f=>`<button data-filter="${f}" class="${f===filter?'selected':''}">${f}</button>`).join('')}<span>● 입고 &nbsp; ● 발송 &nbsp; ● 업무 &nbsp; ● 일정</span></div>${view==='달력'?calendar():table(filtered().filter(i=>i.date.startsWith(`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}`)))}</section>`;
+if(page==='오늘'){html=heading(`좋은 하루예요, ${esc(currentUser.name)}님 <span class="wave">☀</span>`,'오늘의 흐름을 한눈에 확인하세요.',`<div class="date-pill">${base.getFullYear()}년 ${base.getMonth()+1}월 ${base.getDate()}일 <b>${['일','월','화','수','목','금','토'][base.getDay()]}요일</b></div>`)+`<section class="welcome"><div><span class="tag">ARME WORKSPACE</span><h2>오늘을 가볍게. 함께, 더 선명하게.</h2><p>할 일부터 입고와 발송까지.<br>하루의 모든 흐름을 한눈에.</p><button data-page="공용 달력">달력 살펴보기 <span>↗</span></button></div><div class="art" aria-hidden="true"><div class="art-card"><span>THIS IS OUR DAY</span><strong>${base.getDate()}</strong><div>✦ &nbsp; Make it happen</div></div><div class="art-check">✓</div><span class="spark">✦</span><div class="art-line"></div></div></section><section class="stats">${[['오늘 할 일',pending.filter(i=>i.type==='task').length,'건','blue','☑','업무'],['입고 예정',pending.filter(i=>i.type==='inbound').reduce((a,i)=>a+i.qty,0),'개','purple','↓','입고 · 재고'],['발송할 택배',pending.filter(i=>i.type==='shipment').length,'건','orange','▧','택배 발송'],['오늘 완료',completed,'건','green','✓','업무']].map(a=>`<button class="stat" data-page="${a[5]}"><div><span>${a[0]}</span><i class="${a[3]}">${icon(a[5])}</i></div><strong>${a[1]}<small>${a[2]}</small></strong><p>${a[0]==='오늘 완료'?'차근차근 잘하고 있어요':'함께 확인하는 오늘'} <span>↗</span></p></button>`).join('')}</section><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h2>오늘의 업무 <span>${due.filter(i=>i.type==='task').length}</span></h2><button data-page="업무">전체 보기 →</button></div>${due.filter(i=>i.type==='task').map(row).join('')||empty('오늘 등록된 업무가 없어요.')}<button class="add-row" data-new="task">＋ 새로운 업무 추가</button></section><section class="panel"><div class="panel-head"><h2>함께하는 사람들</h2><span class="muted">${state.users.length}명</span></div>${renderTeam()}<div class="team-note">${state.users.length<4?'직원을 초대하고 함께 시작해 보세요.<button data-page="사용자">새로운 사용자 초대 ↗</button>':'작은 공유가 더 나은 협업을 만들어요.<button data-page="채팅">채팅 열기 ↗</button>'}</div></section></div><section class="panel schedule"><div class="panel-head"><h2>오늘의 입고 & 발송 <span>${due.filter(i=>['inbound','shipment'].includes(i.type)).length}</span></h2><button data-page="공용 달력">달력에서 보기 →</button></div>${table(due.filter(i=>['inbound','shipment'].includes(i.type)))}</section>`;
+}else if(page==='공용 달력'){html=heading('함께 보는 일정','입고, 발송, 업무 일정을 함께 확인하고 준비하세요.',`<button class="primary" data-new="meeting">＋ 일정 등록</button>`)+`<section class="panel"><div class="calendar-toolbar"><div class="month-controls"><button id="prev" aria-label="이전 달">‹</button><h2>${month.getFullYear()}년 ${month.getMonth()+1}월</h2><button id="next" aria-label="다음 달">›</button><button id="this-month">이번 달</button></div><div class="segmented">${['달력','표'].map(v=>`<button data-view="${v}" class="${view===v?'selected':''}">${v}</button>`).join('')}</div></div><div class="filters">${['전체',...Object.values(types).map(v=>v[0])].map(f=>`<button data-filter="${f}" class="${f===filter?'selected':''}">${f}</button>`).join('')}<span>● 입고 &nbsp; ● 발송 &nbsp; ● 업무 &nbsp; ● 일정</span></div>${view==='달력'?calendar():table(filtered().filter(i=>i.date.startsWith(`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}`)))}</section>`;
 }else if(page==='업무'){const items=state.items.filter(i=>i.type==='task'&&(taskTab!=='내 업무'||i.ownerId===currentUser.id));html=heading('업무를 함께, 차근차근','담당자와 마감일을 정하고 진행 상황을 공유하세요.',`<button class="primary" data-new="task">＋ 업무 요청</button>`)+`<div class="tabs">${['전체 업무','내 업무','부탁한 업무'].map(t=>`<button data-tab="${t}" class="${taskTab===t?'selected':''}">${t}</button>`).join('')}</div><section class="panel">${(taskTab==='부탁한 업무'?items.filter(i=>i.requesterId===currentUser.id):items).map(row).join('')||empty('아직 등록된 업무가 없어요.')}</section>`;
 }else if(page==='입고 · 재고'||page==='택배 발송'){let type=page==='택배 발송'?'shipment':'inbound';html=heading(page==='택배 발송'?'꼼꼼하게, 택배 발송':'미리 보는 입고, 정확한 재고',type==='shipment'?'발송 예정부터 운송장까지 한곳에서 관리하세요.':'입고 예정 수량은 실제 입고를 완료한 뒤 재고에 반영됩니다.',`<button class="primary" data-new="${type}">＋ ${type==='shipment'?'발송':'입고'} 등록</button>`)+`<section class="panel">${table(state.items.filter(i=>i.type===type))}</section>`+(type==='inbound'?`<section class="panel stock"><div class="panel-head"><h2>입고 완료 재고</h2><span class="muted">등록된 입고의 누적 수량 · 출고 차감 미지원</span></div>${Object.entries(state.stock).map(([k,v])=>`<div class="stock-row"><b>${esc(k)}</b><span>${v}개</span></div>`).join('')||empty('입고를 완료하면 확인된 수량이 이곳에 표시됩니다.')}</section>`:'');
-}else if(page==='팀 관리'){html=teamSettings();}else if(page==='아카이브'){html=archivePage();}else if(['매뉴얼','자료실'].includes(page)){html=libraryPage(page);}else{html=chatPage();}
+}else if(page==='사용자'){html=teamSettings();}else if(page==='아카이브'){html=archivePage();}else if(['매뉴얼','자료실'].includes(page)){html=libraryPage(page);}else{html=chatPage();}
 $('#main').innerHTML=html;restoreDraft(preserved);
 }
 function empty(t){return `<div class="empty">${t}</div>`}
@@ -216,7 +228,7 @@ async function saveItem(form) {
 }
 async function navigate(nextPage) {
   page = nextPage; render();
-  if (page === '팀 관리') await refreshInvitations();
+  if (page === '사용자') await refreshInvitations();
   if (collections[page]) await loadCollection(page);
 }
 async function handleClick(button) {
@@ -260,7 +272,7 @@ document.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (button) handleClick(button).catch(error => toast(error.message));
 });
-$('#add-top').onclick = () => ['매뉴얼','자료실'].includes(page)?(currentUser.role==='admin'?openLibrary(page):toast('등록은 관리자에게 요청해 주세요.')):openForm(page === '택배 발송' ? 'shipment' : page === '입고 · 재고' ? 'inbound' : 'task');
+$('#add-top').onclick = () => ['매뉴얼','자료실'].includes(page)?openLibrary(page):openForm(page === '택배 발송' ? 'shipment' : page === '입고 · 재고' ? 'inbound' : 'task');
 $('#close').onclick = () => $('#dialog').close();
 $('#logout').onclick = async () => {
   try { await api('/api/logout', { method: 'POST', body: {} }); signedOut(); }
@@ -314,15 +326,15 @@ async function initialize() {
   }
 }
 // Shared archive, manual, resource and complete chat-history search.
-const collections = {'아카이브':'archive','매뉴얼':'manuals','자료실':'resources','팀 채팅':'messages/search'};
+const collections = {'아카이브':'archive','매뉴얼':'manuals','자료실':'resources','채팅':'messages/search'};
 let searches = {}, collectionData = {}, collectionRequest = 0, chatSearchActive = false;
 const dateLabel = value => value ? new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '완료일 미기록';
 function searchFields(kind) {
- const query=searches[kind]||{}, chat=kind==='팀 채팅', detailed=chat||kind==='아카이브';
+ const query=searches[kind]||{}, chat=kind==='채팅', detailed=chat||kind==='아카이브';
  return `<form id="collection-search" data-kind="${kind}" class="collection-search"><label class="query-field">검색어<input name="q" value="${esc(query.q||'')}" maxlength="100" placeholder="${chat?'대화 내용 검색':kind==='아카이브'?'제목, 메모, 운송장 검색':'제목, 분류, 내용 검색'}"></label>${detailed?`<label>${chat?'작성자':'담당자'}<select name="${chat?'authorId':'ownerId'}"><option value="">전체 직원</option>${state.users.map(u=>`<option value="${esc(u.id)}" ${query[chat?'authorId':'ownerId']===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}</select></label>${chat?'':`<label>구분<select name="type"><option value="">전체</option>${Object.entries(types).map(([k,v])=>`<option value="${k}" ${query.type===k?'selected':''}>${v[0]}</option>`).join('')}</select></label>`}<label>${chat?'대화':'업무 예정'} 시작일<input name="from" type="date" value="${esc(query.from||'')}"></label><label>종료일<input name="to" type="date" value="${esc(query.to||'')}"></label>`:''}<button class="primary">검색</button><button type="button" data-reset-search="${kind}" class="reset-search">초기화</button></form>`;
 }
 async function loadCollection(kind=page, append=false) {
- if(!collections[kind] || (kind==='팀 채팅'&&!chatSearchActive))return;
+ if(!collections[kind] || (kind==='채팅'&&!chatSearchActive))return;
  const request=++collectionRequest,user=currentUser?.id,params={...(searches[kind]||{})};
  const old=collectionData[kind];params.offset=append?(old?.results.length||0):0;
  collectionData[kind]={...old,loading:true,error:''};if(page===kind)render();
@@ -344,26 +356,26 @@ function archivePage() {
 }
 function libraryPage(kind) {
  const manual=kind==='매뉴얼';
- return heading(manual?'우리 팀의 업무 매뉴얼':'함께 사용하는 자료실',manual?'업무 절차와 기준을 정리하고 함께 확인하세요.':'양식과 문서를 올리고 필요한 파일을 내려받으세요.',currentUser.role==='admin'?`<button class="primary" data-library-new="${kind}">＋ ${manual?'매뉴얼 작성':'파일 올리기'}</button>`:'')+`<section class="panel">${searchFields(kind)}${manual?'':`<div class="collection-note">파일당 5MB · 자료실 전체 25MB · 현재 ${((collectionData[kind]?.usedBytes||0)/1024/1024).toFixed(1)}MB 사용</div>`}${collectionBody(kind,i=>manual?`<button class="library-card" data-manual="${esc(i.id)}"><span class="badge green">${esc(i.category)}</span><h2>${esc(i.title)}</h2><p>${esc(i.content.slice(0,130))}</p><small>${esc(i.editor)} · ${esc(dateLabel(i.updated_at))}</small><span class="card-arrow">↗</span></button>`:`<div class="resource-entry"><div><span class="badge blue">${esc(i.category)}</span><b>${esc(i.title)}</b><small>${esc(i.filename)} · ${(i.size/1024).toFixed(1)}KB · ${esc(i.author)} · ${esc(dateLabel(i.created_at))}</small></div><a class="download" href="/api/resources/${encodeURIComponent(i.id)}/download">다운로드 ↓</a>${currentUser.role==='admin'?`<button class="delete-link" data-resource-delete="${esc(i.id)}">삭제</button>`:''}</div>`)}</section>`;
+ return heading(manual?'업무 매뉴얼':'함께 사용하는 자료실',manual?'업무 절차와 기준을 정리하고 함께 확인하세요.':'양식과 문서를 올리고 필요한 파일을 내려받으세요.',`<button class="primary" data-library-new="${kind}">＋ ${manual?'매뉴얼 작성':'파일 올리기'}</button>`)+`<section class="panel">${searchFields(kind)}${manual?'':`<div class="collection-note">파일당 5MB · 자료실 전체 25MB · 현재 ${((collectionData[kind]?.usedBytes||0)/1024/1024).toFixed(1)}MB 사용</div>`}${collectionBody(kind,i=>manual?`<button class="library-card" data-manual="${esc(i.id)}"><span class="badge green">${esc(i.category)}</span><h2>${esc(i.title)}</h2><p>${esc(i.content.slice(0,130))}</p><small>${esc(i.editor)} · ${esc(dateLabel(i.updated_at))}</small><span class="card-arrow">↗</span></button>`:`<div class="resource-entry"><div><span class="badge blue">${esc(i.category)}</span><b>${esc(i.title)}</b><small>${esc(i.filename)} · ${(i.size/1024).toFixed(1)}KB · ${esc(i.author)} · ${esc(dateLabel(i.created_at))}</small></div><a class="download" href="/api/resources/${encodeURIComponent(i.id)}/download">다운로드 ↓</a><button class="delete-link" data-resource-delete="${esc(i.id)}">삭제</button></div>`)}</section>`;
 }
 function messageMarkup(message) {
  return `<div class="message"><span class="avatar">${esc(message.name[0])}</span><div><small>${esc(message.name)} · ${esc(dateLabel(message.createdAt))}</small><p>${esc(message.text)}</p></div></div>`;
 }
 function chatPage() {
- return heading('가볍게 나누는 팀 이야기','팀 대화와 지난 기록을 한곳에서 확인하세요.')+`<section class="panel chat"><div class="panel-head"><h2>우리 팀 전체방</h2><span class="muted">${chatSearchActive?'전체 대화 기록 검색':'최근 대화 500개'}</span></div>${searchFields('팀 채팅')}<div class="messages">${chatSearchActive?collectionBody('팀 채팅',messageMarkup):(state.messages.map(messageMarkup).join('')||empty('첫 번째 팀 이야기를 남겨보세요.'))}</div><form id="chat-form"><input name="message" required maxlength="2000" placeholder="팀원에게 남길 메시지를 입력하세요" aria-label="메시지"><button class="primary">보내기 ↗</button></form></section>`;
+ return heading('이야기가 이어지는 곳','대화와 지난 기록을 한곳에서 확인하세요.')+`<section class="panel chat"><div class="panel-head"><h2>모두의 대화</h2><span class="muted">${chatSearchActive?'전체 대화 기록 검색':'최근 대화 500개'}</span></div>${searchFields('채팅')}<div class="messages">${chatSearchActive?collectionBody('채팅',messageMarkup):(state.messages.map(messageMarkup).join('')||empty('첫 번째 이야기를 남겨보세요.'))}</div><form id="chat-form"><input name="message" required maxlength="2000" placeholder="메시지를 입력하세요" aria-label="메시지"><button class="primary">보내기 ↗</button></form></section>`;
 }
 let manualEditing=null;
 function openLibrary(kind,id=null) {
  if(kind==='자료실') {$('#resource-form').reset();$('#resource-error').textContent='';$('#resource-dialog').showModal();return;}
  const item=collectionData['매뉴얼']?.results?.find(i=>i.id===id),form=$('#manual-form');
  manualEditing=item||null;form.reset();$('#manual-error').textContent='';
- for(const field of ['title','category','content']) {form.elements[field].value=item?.[field]||(field==='category'?'일반':'');form.elements[field].readOnly=currentUser.role!=='admin';}
- $('#manual-save').hidden=currentUser.role!=='admin';$('#manual-delete').hidden=!item||currentUser.role!=='admin';
+ for(const field of ['title','category','content']) {form.elements[field].value=item?.[field]||(field==='category'?'일반':'');form.elements[field].readOnly=false;}
+ $('#manual-save').hidden=false;$('#manual-delete').hidden=!item;
  $('#manual-heading').textContent=item?'매뉴얼 상세':'새 매뉴얼 작성';$('#manual-dialog').showModal();
 }
 async function collectionClick(button) {
  if(button.dataset.more)await loadCollection(button.dataset.more,true);
- if(button.dataset.resetSearch){const kind=button.dataset.resetSearch;searches[kind]={};if(kind==='팀 채팅')chatSearchActive=false;for(const input of ($('#collection-search')?.elements||[]))if(input.name)input.value='';render();if(kind!=='팀 채팅')await loadCollection(kind);}
+ if(button.dataset.resetSearch){const kind=button.dataset.resetSearch;searches[kind]={};if(kind==='채팅')chatSearchActive=false;for(const input of ($('#collection-search')?.elements||[]))if(input.name)input.value='';render();if(kind!=='채팅')await loadCollection(kind);}
  if(button.dataset.libraryNew)openLibrary(button.dataset.libraryNew);
  if(button.dataset.manual)openLibrary('매뉴얼',button.dataset.manual);
  if(button.dataset.closeDialog)document.getElementById(button.dataset.closeDialog).close();
@@ -376,8 +388,8 @@ async function collectionClick(button) {
 }
 async function collectionSubmit(form) {
  if(form.id==='collection-search'){
-  const kind=form.dataset.kind;searches[kind]=Object.fromEntries(new FormData(form));if(kind==='팀 채팅')chatSearchActive=true;
-  await loadCollection(kind);if(kind==='팀 채팅'&&$('.messages'))$('.messages').scrollTop=0;return true;
+  const kind=form.dataset.kind;searches[kind]=Object.fromEntries(new FormData(form));if(kind==='채팅')chatSearchActive=true;
+  await loadCollection(kind);if(kind==='채팅'&&$('.messages'))$('.messages').scrollTop=0;return true;
  }
  if(!['manual-form','resource-form'].includes(form.id))return false;
  const button=form.querySelector('button[type=submit]'),error=form.id==='manual-form'?$('#manual-error'):$('#resource-error');button.disabled=true;error.textContent='';

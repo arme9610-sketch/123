@@ -50,25 +50,26 @@ for(const engine of engines){
   const next=(await f.request('/api/messages/search?offset=50',{user:f.member})).data;assert.equal(next.results.length,50);assert.ok(!next.results.some(m=>first.results.some(n=>m.id===n.id)));
   assert.equal((await f.request('/api/messages/search')).status,401);
  });
- test(engine+': manuals are shared but admin-only with stale edit protection',async t=>{
+ test(engine+': all employees can write and edit manuals with stale edit protection',async t=>{
   const f=await fixture(t,engine),body={title:'포장 매뉴얼',category:'발송',content:'유리 제품은 완충재 2겹'};
-  assert.equal((await f.request('/api/manuals',{method:'POST',user:f.member,body})).status,403);
-  const created=await f.request('/api/manuals',{method:'POST',user:f.admin,body});assert.equal(created.status,201);
+  assert.equal((await f.request('/api/manuals',{method:'POST',body})).status,401);
+  const created=await f.request('/api/manuals',{method:'POST',user:f.member,body});assert.equal(created.status,201);
   const doc=(await f.request('/api/manuals?q='+encodeURIComponent('완충재'),{user:f.member})).data.results[0];assert.equal(doc.title,body.title);
-  assert.equal((await f.request('/api/manuals/'+doc.id,{method:'PUT',user:f.admin,body:{...body,version:doc.version,content:'완충재 3겹'}})).status,200);
+  assert.equal((await f.request('/api/manuals/'+doc.id,{method:'PUT',user:f.member,body:{...body,version:doc.version,content:'완충재 3겹'}})).status,200);
   assert.equal((await f.request('/api/manuals/'+doc.id,{method:'PUT',user:f.admin,body:{...body,version:doc.version}})).status,409);
   await f.restart();const saved=(await f.request('/api/manuals',{user:f.member})).data.results[0];assert.equal(saved.content,'완충재 3겹');
+  assert.equal((await f.request('/api/manuals/'+saved.id,{method:'DELETE',user:f.member,body:{version:saved.version}})).status,200);assert.equal((await f.request('/api/manuals',{user:f.admin})).data.results.length,0);
  });
  test(engine+': files survive restart, download exact bytes and require authentication',async t=>{
   const f=await fixture(t,engine),bytes=Buffer.from('업무양식,수량\n컵,3'),body={title:'발송 양식',category:'양식',filename:'발송양식.csv',data:bytes.toString('base64')};
-  assert.equal((await f.request('/api/resources',{method:'POST',user:f.member,body})).status,403);
+  assert.equal((await f.request('/api/resources',{method:'POST',body})).status,401);
   assert.equal((await f.request('/api/resources',{method:'POST',user:f.admin,body:{...body,filename:'run.html'}})).status,422);
-  const created=await f.request('/api/resources',{method:'POST',user:f.admin,body});assert.equal(created.status,201);await f.restart();
+  const created=await f.request('/api/resources',{method:'POST',user:f.member,body});assert.equal(created.status,201);await f.restart();
   const list=await f.request('/api/resources?q='+encodeURIComponent('양식'),{user:f.member});assert.equal(list.data.results[0].id,created.data.id);assert.equal(list.data.usedBytes,bytes.length);assert.ok(!('data' in list.data.results[0]));
   const route='/api/resources/'+created.data.id+'/download';assert.equal((await f.request(route)).status,401);
   const file=await f.request(route,{user:f.member});assert.deepEqual(file.data,bytes);assert.match(file.headers.get('content-disposition'),/attachment/);
-  assert.equal((await f.request('/api/resources/'+created.data.id,{method:'DELETE',user:f.member})).status,403);
-  assert.equal((await f.request('/api/resources/'+created.data.id,{method:'DELETE',user:f.admin})).status,200);assert.equal((await f.request(route,{user:f.member})).status,404);
+  assert.equal((await f.request('/api/resources/'+created.data.id,{method:'DELETE'})).status,401);
+  assert.equal((await f.request('/api/resources/'+created.data.id,{method:'DELETE',user:f.member})).status,200);assert.equal((await f.request(route,{user:f.member})).status,404);
  });
  test(engine+': resource size and total quota are enforced and released after deletion',async t=>{
   const f=await fixture(t,engine),data=Buffer.alloc(5*1024*1024,65).toString('base64');
