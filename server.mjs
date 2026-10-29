@@ -1,3 +1,4 @@
+import { featureRoutes } from './lib/workspace-features.mjs';
 import http from 'node:http';
 import { readFile, realpath } from 'node:fs/promises';
 import { readFileSync, writeFileSync, existsSync, lstatSync } from 'node:fs';
@@ -127,7 +128,9 @@ export async function createApp({
     if (!Number.isSafeInteger(body.version) || body.version !== current.version) throw new AppError(409, '다른 직원이 먼저 수정했습니다. 최신 내용을 확인한 후 다시 시도해 주세요.');
   }
 
+  const features = featureRoutes({db,auth,admin,json,changed,publish});
   async function api(req, res, url) {
+    if (await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
     if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized() });
     if (route === '/api/setup' && method === 'POST') {
@@ -226,7 +229,7 @@ export async function createApp({
       const body = await jsonBody(req), updated = itemMatch[2] ? null : await validateItem(body);
       const item = await db.transaction(async connection => {
         const current = await getItem(itemMatch[1], connection); checkVersion(body, current);
-        if (itemMatch[2]) await connection.run('UPDATE items SET done=?,version=version+1 WHERE id=? AND version=?', [current.done ? 0 : 1, current.id, current.version]);
+        if (itemMatch[2]) await connection.run('UPDATE items SET done=?,completed_at=?,version=version+1 WHERE id=? AND version=?', [current.done ? 0 : 1, current.done ? null : new Date().toISOString(), current.id, current.version]);
         else {
           if (current.done) throw new AppError(409, '완료를 취소한 후 수정해 주세요.');
           await connection.run('UPDATE items SET title=?,type=?,qty=?,owner_id=?,date=?,note=?,tracking=?,version=version+1 WHERE id=? AND version=?', [updated.title, updated.type, updated.qty, updated.ownerId, updated.date, updated.note, updated.tracking, current.id, current.version]);

@@ -39,6 +39,19 @@
       <button class="primary submit">저장하기</button>
     </form>
   </dialog>
+  <dialog id="manual-dialog"><form id="manual-form">
+    <div class="dialog-title"><h2 id="manual-heading">매뉴얼 작성</h2><button type="button" data-close-dialog="manual-dialog" aria-label="닫기">✕</button></div>
+    <label>제목<input name="title" required maxlength="100"></label><label>분류<input name="category" required maxlength="40" value="일반"></label>
+    <label>내용<textarea name="content" class="manual-content" required maxlength="20000" placeholder="업무 순서와 주의사항을 작성하세요."></textarea></label>
+    <p id="manual-error" class="form-error" role="alert"></p><button id="manual-save" type="submit" class="primary submit">매뉴얼 저장</button><button id="manual-delete" type="button" class="delete-link">매뉴얼 삭제</button>
+  </form></dialog>
+  <dialog id="resource-dialog"><form id="resource-form">
+    <div class="dialog-title"><h2>자료 올리기</h2><button type="button" data-close-dialog="resource-dialog" aria-label="닫기">✕</button></div>
+    <label>제목<input name="title" required maxlength="100"></label><label>분류<input name="category" required maxlength="40" value="일반"></label>
+    <label>파일<input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.csv,.xls,.xlsx,.doc,.docx,.ppt,.pptx,.zip" required></label>
+    <p class="privacy">파일당 5MB, 자료실 전체 25MB까지 올릴 수 있어요. 로그인한 팀원들이 내려받을 수 있습니다.</p>
+    <p id="resource-error" class="form-error" role="alert"></p><button type="submit" class="primary submit">자료 저장</button>
+  </form></dialog>
   <div id="toast" role="status"></div>
   <script src="/app.js"></script>
 </body>

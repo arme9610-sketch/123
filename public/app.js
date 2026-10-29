@@ -44,7 +44,8 @@ function connection(text, connected = false) {
 function signedOut(message = '') {
   eventStream?.close(); eventStream = null;
   currentUser = null; csrfToken = ''; state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
-  invitations = []; inviteResult = null; page = '오늘';
+  invitations = []; inviteResult = null; page = '오늘';searches={};collectionData={};chatSearchActive=false;collectionRequest++;
+  $('#manual-dialog').close();$('#resource-dialog').close();
   $('#dialog').close(); $('#main').replaceChildren(); $('#workspace-screen').hidden = true;
   showAuth(inviteToken ? 'join' : 'login', message);
 }
@@ -104,7 +105,7 @@ function connectEvents() {
   connection('실시간 연결 중');
   stream.onopen = () => connection('실시간 연결됨', true);
   stream.addEventListener('change', () => {
-    refreshState().then(() => { if (currentUser?.role === 'admin' && page === '팀 관리') return refreshInvitations(); }).catch(error => { if (currentUser) connection('동기화 지연 · 재연결 중'); });
+    refreshState().then(() => { if (collections[page]) loadCollection(page); if (currentUser?.role === 'admin' && page === '팀 관리') return refreshInvitations(); }).catch(error => { if (currentUser) connection('동기화 지연 · 재연결 중'); });
   });
   stream.onerror = async () => {
     if (eventStream !== stream || !currentUser) return;
@@ -112,9 +113,9 @@ function connectEvents() {
     try { await api('/api/session'); } catch { /* 401 transitions to login; network failure will reconnect. */ }
   };
 }
-const icons = ['◫', '☑', '▦', '▤', '▧', '◌', '⚙'];
+const icons = ['◫', '☑', '▦', '▤', '▧', '◌', '▣', '▤', '▧', '⚙'];
 function nav() {
-  const pages = ['오늘', '업무', '공용 달력', '입고 · 재고', '택배 발송', '팀 채팅', ...(currentUser.role === 'admin' ? ['팀 관리'] : [])];
+  const pages = ['오늘', '업무', '공용 달력', '입고 · 재고', '택배 발송', '팀 채팅', '아카이브', '매뉴얼', '자료실', ...(currentUser.role === 'admin' ? ['팀 관리'] : [])];
   $('#nav').innerHTML = pages.map((p, i) => `<button class="${page === p ? 'active' : ''}" data-page="${p}"><span aria-hidden="true">${icons[i]}</span>${p}</button>`).join('');
   $('#breadcrumb').textContent = page;
   $('#profile-avatar').textContent = currentUser.name[0];
@@ -146,7 +147,7 @@ if(page==='오늘'){html=heading(`좋은 하루예요, ${esc(currentUser.name)}�
 }else if(page==='공용 달력'){html=heading('우리 팀의 일정','입고, 발송, 업무 일정을 함께 확인하고 준비하세요.',`<button class="primary" data-new="meeting">＋ 일정 등록</button>`)+`<section class="panel"><div class="calendar-toolbar"><div class="month-controls"><button id="prev" aria-label="이전 달">‹</button><h2>${month.getFullYear()}년 ${month.getMonth()+1}월</h2><button id="next" aria-label="다음 달">›</button><button id="this-month">이번 달</button></div><div class="segmented">${['달력','표'].map(v=>`<button data-view="${v}" class="${view===v?'selected':''}">${v}</button>`).join('')}</div></div><div class="filters">${['전체',...Object.values(types).map(v=>v[0])].map(f=>`<button data-filter="${f}" class="${f===filter?'selected':''}">${f}</button>`).join('')}<span>● 입고 &nbsp; ● 발송 &nbsp; ● 업무 &nbsp; ● 일정</span></div>${view==='달력'?calendar():table(filtered().filter(i=>i.date.startsWith(`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}`)))}</section>`;
 }else if(page==='업무'){const items=state.items.filter(i=>i.type==='task'&&(taskTab!=='내 업무'||i.ownerId===currentUser.id));html=heading('업무를 함께, 차근차근','담당자와 마감일을 정하고 진행 상황을 공유하세요.',`<button class="primary" data-new="task">＋ 업무 요청</button>`)+`<div class="tabs">${['전체 업무','내 업무','부탁한 업무'].map(t=>`<button data-tab="${t}" class="${taskTab===t?'selected':''}">${t}</button>`).join('')}</div><section class="panel">${(taskTab==='부탁한 업무'?items.filter(i=>i.requesterId===currentUser.id):items).map(row).join('')||empty('아직 등록된 업무가 없어요.')}</section>`;
 }else if(page==='입고 · 재고'||page==='택배 발송'){let type=page==='택배 발송'?'shipment':'inbound';html=heading(page==='택배 발송'?'꼼꼼하게, 택배 발송':'미리 보는 입고, 정확한 재고',type==='shipment'?'발송 예정부터 운송장까지 한곳에서 관리하세요.':'입고 예정 수량은 실제 입고를 완료한 뒤 재고에 반영됩니다.',`<button class="primary" data-new="${type}">＋ ${type==='shipment'?'발송':'입고'} 등록</button>`)+`<section class="panel">${table(state.items.filter(i=>i.type===type))}</section>`+(type==='inbound'?`<section class="panel stock"><div class="panel-head"><h2>입고 완료 재고</h2><span class="muted">등록된 입고의 누적 수량 · 출고 차감 미지원</span></div>${Object.entries(state.stock).map(([k,v])=>`<div class="stock-row"><b>${esc(k)}</b><span>${v}개</span></div>`).join('')||empty('입고를 완료하면 확인된 수량이 이곳에 표시됩니다.')}</section>`:'');
-}else if(page==='팀 관리'){html=teamSettings();}else{html=heading('가볍게 나누는 팀 이야기','업무와 관련된 이야기를 함께 나눠보세요.')+`<section class="panel chat"><div class="panel-head"><h2><span class="online"></span> 우리 팀 전체방</h2><span class="muted">팀 전체 공유</span></div><div class="messages"><div class="chat-notice">이 대화는 로그인한 우리 팀 직원 모두에게 실시간으로 공유됩니다.</div>${state.messages.length?state.messages.map(m=>`<div class="message"><span class="avatar">${esc(m.name[0])}</span><div><small>${esc(m.name)} · ${esc(new Date(m.createdAt).toLocaleString('ko-KR', {timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}))}</small><p>${esc(m.text)}</p></div></div>`).join(''):empty('첫 번째 팀 이야기를 남겨보세요.')}</div><form id="chat-form"><input name="message" required maxlength="2000" placeholder="팀원에게 남길 메시지를 입력하세요" aria-label="메시지"><button class="primary">보내기 ↗</button></form></section>`;}
+}else if(page==='팀 관리'){html=teamSettings();}else if(page==='아카이브'){html=archivePage();}else if(['매뉴얼','자료실'].includes(page)){html=libraryPage(page);}else{html=chatPage();}
 $('#main').innerHTML=html;restoreDraft(preserved);
 }
 function empty(t){return `<div class="empty">${t}</div>`}
@@ -175,10 +176,10 @@ function restoreDraft(draft) {
   }
   if (draft.focus) {
     const input = document.getElementById(draft.focus.form)?.elements[draft.focus.name];
-    if (input) { input.focus({ preventScroll: true }); if (draft.focus.start !== null) input.setSelectionRange(draft.focus.start, draft.focus.end); }
+    if (input) { input.focus({ preventScroll: true }); if (draft.focus.start !== null && typeof input.setSelectionRange==='function' && ['text','search','textarea'].includes(input.type)) input.setSelectionRange(draft.focus.start, draft.focus.end); }
   }
   const messages = $('.messages');
-  if (messages) messages.scrollTop = draft.nearEnd ? messages.scrollHeight : draft.scroll;
+  if (messages) messages.scrollTop = chatSearchActive ? (draft.scroll||0) : draft.nearEnd ? messages.scrollHeight : draft.scroll;
 }
 
 let editing = null, editingVersion = null;
@@ -216,10 +217,12 @@ async function saveItem(form) {
 async function navigate(nextPage) {
   page = nextPage; render();
   if (page === '팀 관리') await refreshInvitations();
+  if (collections[page]) await loadCollection(page);
 }
 async function handleClick(button) {
   if (button.dataset.auth) { showAuth(button.dataset.auth); return; }
   if (!currentUser) return;
+  await collectionClick(button);
   if (button.dataset.page) await navigate(button.dataset.page);
   if (button.dataset.new) openForm(button.dataset.new);
   if (button.dataset.edit) openForm('task', today, button.dataset.edit);
@@ -235,7 +238,7 @@ async function handleClick(button) {
     const item = state.items.find(i => i.id === button.dataset.done); button.disabled = true;
     try {
       await api(`/api/items/${encodeURIComponent(item.id)}/toggle`, { method: 'POST', body: { version: item.version } });
-      await refreshState(); toast(item.done ? '완료를 취소했어요.' : '완료 처리했어요.');
+      await refreshState();if(page==='아카이브')await loadCollection(page); toast(item.done ? '완료를 취소했어요.' : '완료 처리했어요.');
     } catch (error) {
       if (error.status === 409) await refreshState().catch(() => {});
       throw error;
@@ -257,7 +260,7 @@ document.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (button) handleClick(button).catch(error => toast(error.message));
 });
-$('#add-top').onclick = () => openForm(page === '택배 발송' ? 'shipment' : page === '입고 · 재고' ? 'inbound' : 'task');
+$('#add-top').onclick = () => ['매뉴얼','자료실'].includes(page)?(currentUser.role==='admin'?openLibrary(page):toast('등록은 관리자에게 요청해 주세요.')):openForm(page === '택배 발송' ? 'shipment' : page === '입고 · 재고' ? 'inbound' : 'task');
 $('#close').onclick = () => $('#dialog').close();
 $('#logout').onclick = async () => {
   try { await api('/api/logout', { method: 'POST', body: {} }); signedOut(); }
@@ -265,6 +268,7 @@ $('#logout').onclick = async () => {
 };
 document.addEventListener('submit', async event => {
   const form = event.target; event.preventDefault();
+  if (currentUser && await collectionSubmit(form)) return;
   if (form.id === 'auth-form') { await authenticate(form); return; }
   if (form.id === 'form') { await saveItem(form); return; }
   if (!currentUser) return;
@@ -309,4 +313,85 @@ async function initialize() {
     $('#retry-init').onclick = initialize;
   }
 }
+// Shared archive, manual, resource and complete chat-history search.
+const collections = {'아카이브':'archive','매뉴얼':'manuals','자료실':'resources','팀 채팅':'messages/search'};
+let searches = {}, collectionData = {}, collectionRequest = 0, chatSearchActive = false;
+const dateLabel = value => value ? new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '완료일 미기록';
+function searchFields(kind) {
+ const query=searches[kind]||{}, chat=kind==='팀 채팅', detailed=chat||kind==='아카이브';
+ return `<form id="collection-search" data-kind="${kind}" class="collection-search"><label class="query-field">검색어<input name="q" value="${esc(query.q||'')}" maxlength="100" placeholder="${chat?'대화 내용 검색':kind==='아카이브'?'제목, 메모, 운송장 검색':'제목, 분류, 내용 검색'}"></label>${detailed?`<label>${chat?'작성자':'담당자'}<select name="${chat?'authorId':'ownerId'}"><option value="">전체 직원</option>${state.users.map(u=>`<option value="${esc(u.id)}" ${query[chat?'authorId':'ownerId']===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}</select></label>${chat?'':`<label>구분<select name="type"><option value="">전체</option>${Object.entries(types).map(([k,v])=>`<option value="${k}" ${query.type===k?'selected':''}>${v[0]}</option>`).join('')}</select></label>`}<label>${chat?'대화':'업무 예정'} 시작일<input name="from" type="date" value="${esc(query.from||'')}"></label><label>종료일<input name="to" type="date" value="${esc(query.to||'')}"></label>`:''}<button class="primary">검색</button><button type="button" data-reset-search="${kind}" class="reset-search">초기화</button></form>`;
+}
+async function loadCollection(kind=page, append=false) {
+ if(!collections[kind] || (kind==='팀 채팅'&&!chatSearchActive))return;
+ const request=++collectionRequest,user=currentUser?.id,params={...(searches[kind]||{})};
+ const old=collectionData[kind];params.offset=append?(old?.results.length||0):0;
+ collectionData[kind]={...old,loading:true,error:''};if(page===kind)render();
+ try{
+  const next=await api('/api/'+collections[kind]+'?'+new URLSearchParams(params));
+  if(request!==collectionRequest||currentUser?.id!==user)return;
+  collectionData[kind]={...next,results:append?[...(old?.results||[]),...next.results]:next.results};
+ }catch(error){if(request===collectionRequest&&currentUser?.id===user)collectionData[kind]={...old,error:error.message};}
+ if(currentUser&&page===kind)render();
+}
+function collectionBody(kind, renderItem) {
+ const data=collectionData[kind];
+ if(data?.error)return `<p class="form-error collection-note" role="alert">${esc(data.error)}</p>`;
+ if(!data||(!data.results&&data.loading))return empty('기록을 불러오고 있어요…');
+ return (data.results?.length?data.results.map(renderItem).join(''):empty('조건에 맞는 기록이 없습니다.'))+(data.hasMore?`<button class="add-row" data-more="${kind}" ${data.loading?'disabled':''}>${data.loading?'불러오는 중…':'다음 기록 더 보기'}</button>`:'');
+}
+function archivePage() {
+ return heading('완료한 일도, 언제든 다시','완료된 업무·입고·발송·일정을 찾아보고 필요한 내용을 확인하세요.')+`<section class="panel">${searchFields('아카이브')}<div class="collection-note">날짜는 업무 예정일 기준입니다. 완료를 취소하면 아카이브에서 빠지고 입고 재고에도 반영됩니다.</div>${collectionBody('아카이브',i=>`<div class="archive-entry">${row(i)}<small>예정일 ${esc(i.date)} · 완료 ${esc(dateLabel(i.completedAt))}</small></div>`)}</section>`;
+}
+function libraryPage(kind) {
+ const manual=kind==='매뉴얼';
+ return heading(manual?'우리 팀의 업무 매뉴얼':'함께 사용하는 자료실',manual?'업무 절차와 기준을 정리하고 함께 확인하세요.':'양식과 문서를 올리고 필요한 파일을 내려받으세요.',currentUser.role==='admin'?`<button class="primary" data-library-new="${kind}">＋ ${manual?'매뉴얼 작성':'파일 올리기'}</button>`:'')+`<section class="panel">${searchFields(kind)}${manual?'':`<div class="collection-note">파일당 5MB · 자료실 전체 25MB · 현재 ${((collectionData[kind]?.usedBytes||0)/1024/1024).toFixed(1)}MB 사용</div>`}${collectionBody(kind,i=>manual?`<button class="library-card" data-manual="${esc(i.id)}"><span class="badge green">${esc(i.category)}</span><h2>${esc(i.title)}</h2><p>${esc(i.content.slice(0,130))}</p><small>${esc(i.editor)} · ${esc(dateLabel(i.updated_at))}</small><span class="card-arrow">↗</span></button>`:`<div class="resource-entry"><div><span class="badge blue">${esc(i.category)}</span><b>${esc(i.title)}</b><small>${esc(i.filename)} · ${(i.size/1024).toFixed(1)}KB · ${esc(i.author)} · ${esc(dateLabel(i.created_at))}</small></div><a class="download" href="/api/resources/${encodeURIComponent(i.id)}/download">다운로드 ↓</a>${currentUser.role==='admin'?`<button class="delete-link" data-resource-delete="${esc(i.id)}">삭제</button>`:''}</div>`)}</section>`;
+}
+function messageMarkup(message) {
+ return `<div class="message"><span class="avatar">${esc(message.name[0])}</span><div><small>${esc(message.name)} · ${esc(dateLabel(message.createdAt))}</small><p>${esc(message.text)}</p></div></div>`;
+}
+function chatPage() {
+ return heading('가볍게 나누는 팀 이야기','팀 대화와 지난 기록을 한곳에서 확인하세요.')+`<section class="panel chat"><div class="panel-head"><h2>우리 팀 전체방</h2><span class="muted">${chatSearchActive?'전체 대화 기록 검색':'최근 대화 500개'}</span></div>${searchFields('팀 채팅')}<div class="messages">${chatSearchActive?collectionBody('팀 채팅',messageMarkup):(state.messages.map(messageMarkup).join('')||empty('첫 번째 팀 이야기를 남겨보세요.'))}</div><form id="chat-form"><input name="message" required maxlength="2000" placeholder="팀원에게 남길 메시지를 입력하세요" aria-label="메시지"><button class="primary">보내기 ↗</button></form></section>`;
+}
+let manualEditing=null;
+function openLibrary(kind,id=null) {
+ if(kind==='자료실') {$('#resource-form').reset();$('#resource-error').textContent='';$('#resource-dialog').showModal();return;}
+ const item=collectionData['매뉴얼']?.results?.find(i=>i.id===id),form=$('#manual-form');
+ manualEditing=item||null;form.reset();$('#manual-error').textContent='';
+ for(const field of ['title','category','content']) {form.elements[field].value=item?.[field]||(field==='category'?'일반':'');form.elements[field].readOnly=currentUser.role!=='admin';}
+ $('#manual-save').hidden=currentUser.role!=='admin';$('#manual-delete').hidden=!item||currentUser.role!=='admin';
+ $('#manual-heading').textContent=item?'매뉴얼 상세':'새 매뉴얼 작성';$('#manual-dialog').showModal();
+}
+async function collectionClick(button) {
+ if(button.dataset.more)await loadCollection(button.dataset.more,true);
+ if(button.dataset.resetSearch){const kind=button.dataset.resetSearch;searches[kind]={};if(kind==='팀 채팅')chatSearchActive=false;for(const input of ($('#collection-search')?.elements||[]))if(input.name)input.value='';render();if(kind!=='팀 채팅')await loadCollection(kind);}
+ if(button.dataset.libraryNew)openLibrary(button.dataset.libraryNew);
+ if(button.dataset.manual)openLibrary('매뉴얼',button.dataset.manual);
+ if(button.dataset.closeDialog)document.getElementById(button.dataset.closeDialog).close();
+ if(button.dataset.resourceDelete&&confirm('이 자료를 삭제할까요? 삭제한 파일은 복구할 수 없습니다.')){
+  await api('/api/resources/'+encodeURIComponent(button.dataset.resourceDelete),{method:'DELETE'});await loadCollection('자료실');toast('자료를 삭제했어요.');
+ }
+ if(button.id==='manual-delete'&&manualEditing&&confirm('이 매뉴얼을 삭제할까요?')){
+  await api('/api/manuals/'+encodeURIComponent(manualEditing.id),{method:'DELETE',body:{version:manualEditing.version}});$('#manual-dialog').close();await loadCollection('매뉴얼');toast('매뉴얼을 삭제했어요.');
+ }
+}
+async function collectionSubmit(form) {
+ if(form.id==='collection-search'){
+  const kind=form.dataset.kind;searches[kind]=Object.fromEntries(new FormData(form));if(kind==='팀 채팅')chatSearchActive=true;
+  await loadCollection(kind);if(kind==='팀 채팅'&&$('.messages'))$('.messages').scrollTop=0;return true;
+ }
+ if(!['manual-form','resource-form'].includes(form.id))return false;
+ const button=form.querySelector('button[type=submit]'),error=form.id==='manual-form'?$('#manual-error'):$('#resource-error');button.disabled=true;error.textContent='';
+ try{
+  if(form.id==='manual-form'){
+   const body=Object.fromEntries(new FormData(form));if(manualEditing)body.version=manualEditing.version;
+   await api('/api/manuals'+(manualEditing?'/'+encodeURIComponent(manualEditing.id):''),{method:manualEditing?'PUT':'POST',body});$('#manual-dialog').close();await loadCollection('매뉴얼');
+  }else{
+   const file=form.elements.file.files[0];if(!file||file.size===0||file.size>5*1024*1024)throw new Error('내용이 있는 5MB 이하 파일을 선택해 주세요.');
+   const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('파일을 읽지 못했습니다.'));reader.readAsDataURL(file);});
+   await api('/api/resources',{method:'POST',body:{title:form.elements.title.value,category:form.elements.category.value,filename:file.name,data}});$('#resource-dialog').close();await loadCollection('자료실');
+  }toast('저장했어요.');
+ }catch(e){error.textContent=e.message;}finally{button.disabled=false;}
+ return true;
+}
+
 initialize();
