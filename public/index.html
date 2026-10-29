@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0071e3">
-  <title>데이온 DAYON · 함께하는 하루</title>
+  <title>Dayon · 함께하는 하루</title>
+  <script src="/theme.js"></script>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -12,7 +13,7 @@
   <section id="auth-screen" class="auth-screen" hidden></section>
   <div id="workspace-screen" hidden>
     <aside>
-      <a class="brand" href="/">데이온<span>ARME WORKSPACE</span></a>
+      <a class="brand" href="/">Dayon<span>ARME WORKSPACE</span></a>
       <div class="workspace"><b>ARME</b><small id="team-size">공유 워크스페이스</small></div>
       <nav id="nav" aria-label="주 메뉴"></nav>
       <div class="aside-bottom"><span class="online"></span> 모든 업무가 한곳에
@@ -21,7 +22,8 @@
       </div>
     </aside>
     <div class="shell">
-      <header><span>워크스페이스 <i>/</i> <b id="breadcrumb">오늘</b></span><div><span id="connection" class="connection" role="status">연결 중</span><button id="add-top" class="primary">＋ 새로 만들기</button></div></header>
+      <header><span>워크스페이스 <i>/</i> <b id="breadcrumb">오늘</b></span><div><span id="connection" class="connection" role="status">연결 중</span><button type="button" id="theme-toggle" class="theme-toggle" data-theme-toggle aria-label="야간 모드로 전환"></button><button type="button" id="reminder-toggle" class="reminder-toggle" aria-label="해야 할 일 알림" aria-expanded="false" aria-controls="reminder-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4"/></svg><span id="reminder-count" class="reminder-count" hidden></span></button><button id="add-top" class="primary">＋ 새로 만들기</button></div></header>
+      <section id="reminder-panel" class="reminder-panel" aria-label="해야 할 일 알림" hidden></section>
       <main id="main"></main>
       <footer>함께하는 하루, 데이온 <span>함께하는 오늘을 더 가볍게.</span></footer>
     </div>
@@ -53,6 +55,6 @@
     <p id="resource-error" class="form-error" role="alert"></p><button type="submit" class="primary submit">자료 저장</button>
   </form></dialog>
   <div id="toast" role="status"></div>
-  <script src="/app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

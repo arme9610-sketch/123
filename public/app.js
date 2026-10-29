@@ -1,6 +1,7 @@
+import { dueReminders, reminderKey, seoulDate } from './reminders.js';
 const $ = selector => document.querySelector(selector);
-const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date());
-const base = new Date(today + 'T12:00:00');
+let today = seoulDate();
+let base = new Date(today + 'T12:00:00');
 const types = { task: ['업무', 'blue'], inbound: ['입고', 'purple'], shipment: ['발송', 'orange'], meeting: ['일정', 'green'] };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
@@ -43,6 +44,7 @@ function connection(text, connected = false) {
 }
 function signedOut(message = '') {
   eventStream?.close(); eventStream = null;
+  closeDesktopNotifications();toggleReminders(false);$('#reminder-panel').replaceChildren();$('#reminder-count').hidden=true;
   currentUser = null; csrfToken = ''; state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
   invitations = []; inviteResult = null; page = '오늘';searches={};collectionData={};chatSearchActive=false;collectionRequest++;
   $('#manual-dialog').close();$('#resource-dialog').close();
@@ -52,7 +54,7 @@ function signedOut(message = '') {
 function showAuth(mode, error = '') {
   authMode = mode; $('#boot').hidden = true; $('#auth-screen').hidden = false;
   const setup = mode === 'setup', join = mode === 'join';
-  $('#auth-screen').innerHTML = `<div class="auth-intro"><a class="brand" href="/">데이온<span>ARME WORKSPACE</span></a><h1>모두의 하루를,<br>데이온에서 함께.</h1><p>업무, 일정, 입고와 택배 발송까지.<br>함께 보고 함께 움직이는 우리 회사의 공간입니다.</p><div class="auth-art">✦<span>ARME WORKSPACE</span></div></div>
+  $('#auth-screen').innerHTML = `<button type="button" class="theme-toggle auth-theme-toggle" data-theme-toggle aria-label="야간 모드로 전환"></button><div class="auth-intro"><a class="brand" href="/">Dayon<span>ARME WORKSPACE</span></a><h1>모두의 하루를,<br>데이온에서 함께.</h1><p>업무, 일정, 입고와 택배 발송까지.<br>함께 보고 함께 움직이는 우리 회사의 공간입니다.</p><div class="auth-art">✦<span>ARME WORKSPACE</span></div></div>
     <div class="auth-card"><p class="eyebrow">WELCOME TO DAYON</p><h2>${setup ? '우리 회사 공간 만들기' : join ? '함께 시작하기' : '다시 만나 반가워요'}</h2><p class="subtitle">${setup ? '첫 계정을 만들고 함께 시작하세요.' : join ? '전달받은 초대로 계정을 만드세요.' : '로그인하고 오늘의 흐름을 확인하세요.'}</p>
     <form id="auth-form">
       ${setup ? '<label>초기 설정 키<input name="setupToken" type="password" autocomplete="off" required placeholder="서버의 초기 설정 키"></label><label>이름<input name="name" required maxlength="30" autocomplete="name" placeholder="표시할 이름"></label>' : ''}
@@ -61,6 +63,7 @@ function showAuth(mode, error = '') {
       ${setup || join ? '<label>비밀번호 확인<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="10" maxlength="128" placeholder="비밀번호를 한 번 더 입력하세요"></label>' : ''}
       <p id="auth-error" class="form-error" role="alert">${esc(error)}</p><button class="primary submit">${setup ? '워크스페이스 시작하기' : join ? '가입하고 시작하기' : '로그인'}</button>
     </form>${setup ? '<p class="auth-note">초기 설정 키는 서버의 data/setup-token 파일 또는 서버에 설정한 키를 사용하세요. 첫 계정 생성 후에는 사용할 수 없습니다.</p>' : `<button class="auth-switch" data-auth="${join ? 'login' : 'join'}">${join ? '이미 계정이 있나요? 로그인' : '직원 초대를 받으셨나요? 계정 만들기'}</button>`}</div>`;
+  window.DayonTheme.sync();
 }
 async function authenticate(form) {
   const data = Object.fromEntries(new FormData(form));
@@ -88,7 +91,7 @@ async function refreshState() {
     do {
       refreshAgain = false;
       const next = await api('/api/state');
-      if (currentUser?.id === userId && next.revision >= state.revision) { state = next; render(); }
+      if (currentUser?.id === userId && next.revision >= state.revision) { state = next; render();checkBrowserReminders(); }
     } while (refreshAgain && currentUser?.id === userId);
   })();
   try { await fetchingState; } finally { fetchingState = null; }
@@ -98,6 +101,7 @@ async function startWorkspace() {
   $('#boot').hidden = true; $('#auth-screen').hidden = true; $('#auth-screen').replaceChildren();
   $('#workspace-screen').hidden = false;
   connectEvents();
+  if(location.hash==='#reminders'){history.replaceState(null,'',location.pathname+location.search);toggleReminders(true);}
 }
 function connectEvents() {
   eventStream?.close();
@@ -131,7 +135,7 @@ function nav() {
   $('#nav').innerHTML = pages.map((p, i) => `<button class="${page === p ? 'active' : ''}" data-page="${p}"><span aria-hidden="true">${icon(p)}</span>${p}</button>`).join('');
   $('#breadcrumb').textContent = page;
   $('#profile-avatar').textContent = currentUser.name[0];
-  $('#profile-name').textContent = currentUser.name;
+  $('#profile-name').textContent = currentUser.name;window.DayonTheme.sync();renderReminders();
 
   $('#team-size').textContent = `함께하는 사람 · ${state.users.length}명`;
 }
@@ -154,7 +158,7 @@ async function refreshInvitations() {
 function badge(i){return `<span class="badge ${types[i.type][1]}">${types[i.type][0]}</span>`}
 function row(i){return `<div class="item"><button class="check ${i.done?'checked':''}" data-done="${i.id}" aria-label="${esc(i.title)} ${i.done?'완료 취소':'완료 처리'}">${i.done?'✓':''}</button><div class="item-text"><b class="${i.done?'strike':''}">${esc(i.title)}</b><small>${esc(i.note)||'등록된 메모가 없습니다.'}</small></div>${badge(i)}<span class="person">${esc(i.owner)}</span><button class="dots" data-edit="${i.id}" aria-label="상세 보기">↗</button></div>`}
 function heading(title,sub,extra=''){return `<div class="heading"><div><p class="eyebrow">EVERY DAY, IN SYNC</p><h1>${title}</h1><p class="subtitle">${sub}</p></div>${extra}</div>`}
-function render(){if(!currentUser)return;const preserved=captureDraft();nav();let html='';const due=state.items.filter(i=>i.date===today), pending=due.filter(i=>!i.done), completed=due.filter(i=>i.done).length;
+function render(){if(!currentUser)return;today=seoulDate();base=new Date(today+'T12:00:00');const preserved=captureDraft();nav();let html='';const due=state.items.filter(i=>i.date===today), pending=due.filter(i=>!i.done), completed=due.filter(i=>i.done).length;
 if(page==='오늘'){html=heading(`좋은 하루예요, ${esc(currentUser.name)}님 <span class="wave">☀</span>`,'오늘의 흐름을 한눈에 확인하세요.',`<div class="date-pill">${base.getFullYear()}년 ${base.getMonth()+1}월 ${base.getDate()}일 <b>${['일','월','화','수','목','금','토'][base.getDay()]}요일</b></div>`)+`<section class="welcome"><div><span class="tag">ARME WORKSPACE</span><h2>오늘을 가볍게. 함께, 더 선명하게.</h2><p>할 일부터 입고와 발송까지.<br>하루의 모든 흐름을 한눈에.</p><button data-page="공용 달력">달력 살펴보기 <span>↗</span></button></div><div class="art" aria-hidden="true"><div class="art-card"><span>THIS IS OUR DAY</span><strong>${base.getDate()}</strong><div>✦ &nbsp; Make it happen</div></div><div class="art-check">✓</div><span class="spark">✦</span><div class="art-line"></div></div></section><section class="stats">${[['오늘 할 일',pending.filter(i=>i.type==='task').length,'건','blue','☑','업무'],['입고 예정',pending.filter(i=>i.type==='inbound').reduce((a,i)=>a+i.qty,0),'개','purple','↓','입고 · 재고'],['발송할 택배',pending.filter(i=>i.type==='shipment').length,'건','orange','▧','택배 발송'],['오늘 완료',completed,'건','green','✓','업무']].map(a=>`<button class="stat" data-page="${a[5]}"><div><span>${a[0]}</span><i class="${a[3]}">${icon(a[5])}</i></div><strong>${a[1]}<small>${a[2]}</small></strong><p>${a[0]==='오늘 완료'?'차근차근 잘하고 있어요':'함께 확인하는 오늘'} <span>↗</span></p></button>`).join('')}</section><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h2>오늘의 업무 <span>${due.filter(i=>i.type==='task').length}</span></h2><button data-page="업무">전체 보기 →</button></div>${due.filter(i=>i.type==='task').map(row).join('')||empty('오늘 등록된 업무가 없어요.')}<button class="add-row" data-new="task">＋ 새로운 업무 추가</button></section><section class="panel"><div class="panel-head"><h2>함께하는 사람들</h2><span class="muted">${state.users.length}명</span></div>${renderTeam()}<div class="team-note">${state.users.length<4?'직원을 초대하고 함께 시작해 보세요.<button data-page="사용자">새로운 사용자 초대 ↗</button>':'작은 공유가 더 나은 협업을 만들어요.<button data-page="채팅">채팅 열기 ↗</button>'}</div></section></div><section class="panel schedule"><div class="panel-head"><h2>오늘의 입고 & 발송 <span>${due.filter(i=>['inbound','shipment'].includes(i.type)).length}</span></h2><button data-page="공용 달력">달력에서 보기 →</button></div>${table(due.filter(i=>['inbound','shipment'].includes(i.type)))}</section>`;
 }else if(page==='공용 달력'){html=heading('함께 보는 일정','입고, 발송, 업무 일정을 함께 확인하고 준비하세요.',`<button class="primary" data-new="meeting">＋ 일정 등록</button>`)+`<section class="panel"><div class="calendar-toolbar"><div class="month-controls"><button id="prev" aria-label="이전 달">‹</button><h2>${month.getFullYear()}년 ${month.getMonth()+1}월</h2><button id="next" aria-label="다음 달">›</button><button id="this-month">이번 달</button></div><div class="segmented">${['달력','표'].map(v=>`<button data-view="${v}" class="${view===v?'selected':''}">${v}</button>`).join('')}</div></div><div class="filters">${['전체',...Object.values(types).map(v=>v[0])].map(f=>`<button data-filter="${f}" class="${f===filter?'selected':''}">${f}</button>`).join('')}<span>● 입고 &nbsp; ● 발송 &nbsp; ● 업무 &nbsp; ● 일정</span></div>${view==='달력'?calendar():table(filtered().filter(i=>i.date.startsWith(`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}`)))}</section>`;
 }else if(page==='업무'){const items=state.items.filter(i=>i.type==='task'&&(taskTab!=='내 업무'||i.ownerId===currentUser.id));html=heading('업무를 함께, 차근차근','담당자와 마감일을 정하고 진행 상황을 공유하세요.',`<button class="primary" data-new="task">＋ 업무 요청</button>`)+`<div class="tabs">${['전체 업무','내 업무','부탁한 업무'].map(t=>`<button data-tab="${t}" class="${taskTab===t?'selected':''}">${t}</button>`).join('')}</div><section class="panel">${(taskTab==='부탁한 업무'?items.filter(i=>i.requesterId===currentUser.id):items).map(row).join('')||empty('아직 등록된 업무가 없어요.')}</section>`;
@@ -234,6 +238,7 @@ async function navigate(nextPage) {
 async function handleClick(button) {
   if (button.dataset.auth) { showAuth(button.dataset.auth); return; }
   if (!currentUser) return;
+  if(await reminderClick(button))return;
   await collectionClick(button);
   if (button.dataset.page) await navigate(button.dataset.page);
   if (button.dataset.new) openForm(button.dataset.new);
@@ -405,5 +410,131 @@ async function collectionSubmit(form) {
  }catch(e){error.textContent=e.message;}finally{button.disabled=false;}
  return true;
 }
+
+// Per-person, per-browser preferences. Work itself always comes from authenticated state.
+const reminderMemory = new Map();
+const desktopNotifications = new Set();
+let dispatchingReminders = false, requestingReminderPermission = false;
+function reminderPreferences(userId = currentUser?.id) {
+  const key = 'dayon-reminders-' + userId;
+  let value = reminderMemory.get(key);
+  try { value = JSON.parse(localStorage.getItem(key)) || value; } catch { /* Use this tab's preference. */ }
+  return { enabled: value?.enabled === true, day: value?.day || '', sent: Array.isArray(value?.sent) ? value.sent.filter(v => typeof v === 'string').slice(-5000) : [] };
+}
+function saveReminderPreferences(value,userId = currentUser?.id) {
+  const key = 'dayon-reminders-' + userId;
+  reminderMemory.set(key,value);
+  try { localStorage.setItem(key,JSON.stringify(value)); } catch { /* In-memory opt-in and deduplication still work. */ }
+}
+function toggleReminders(open = $('#reminder-panel').hidden) {
+  $('#reminder-panel').hidden = !open;
+  $('#reminder-toggle').setAttribute('aria-expanded', String(open));
+  if(open && currentUser) renderReminders();
+}
+function notificationSupport() { return 'Notification' in window && window.isSecureContext; }
+function renderReminders() {
+  if(!currentUser)return;
+  const reminders = dueReminders(state.items,currentUser.id);
+  const count = $('#reminder-count'); count.hidden = !reminders.length;
+  count.textContent = reminders.length>99?'99+':String(reminders.length);
+  $('#reminder-toggle').setAttribute('aria-label',`해야 할 일 알림 ${reminders.length}건`);
+  const prefs = reminderPreferences(),supported=notificationSupport();
+  const permission = supported?Notification.permission:'unsupported';
+  const enabled = prefs.enabled && permission === 'granted';
+  const focused = document.activeElement?.dataset.reminderItem;
+  const focusedControl = document.activeElement?.closest('#reminder-panel') ? document.activeElement.id : '';
+  const scroll = $('#reminder-panel .reminder-list')?.scrollTop || 0;
+  $('#reminder-panel').innerHTML = `<div class="reminder-heading"><div><p class="eyebrow">YOUR DAY, ON TIME</p><h2>해야 할 일 <span>${reminders.length}</span></h2></div><button type="button" data-close-reminders aria-label="알림 닫기">✕</button></div><p class="reminder-description">내 담당 업무·입고·발송·일정 중 오늘 마감이거나 기한이 지난 항목입니다.</p><div class="reminder-list">${reminders.length?reminders.map(item=>`<button type="button" class="reminder-item" data-reminder-item="${esc(item.id)}"><span class="badge ${item.overdue?'reminder-overdue':'blue'}">${item.overdue?'기한 지남':'오늘 마감'}</span><b>${esc(item.title)}</b><small>${esc(types[item.type][0])} · ${esc(item.date)}</small><span class="reminder-arrow">↗</span></button>`).join(''):'<div class="empty">지금 확인할 마감 업무가 없어요.</div>'}</div><div class="browser-reminder-setting"><div><b>브라우저 알림</b><span>${enabled?'켜짐':permission==='denied'?'브라우저에서 차단됨':supported?'꺼짐':'이 브라우저는 지원하지 않아요'}</span></div><button type="button" id="browser-reminder-toggle" class="primary" ${supported&&!requestingReminderPermission?'':'disabled'}>${prefs.enabled?'끄기':'켜기'}</button><p>Dayon이 열린 동안 알림을 보냅니다. 앱을 완전히 닫은 상태의 푸시 알림은 지원하지 않습니다.</p></div>`;
+  $('#reminder-panel .reminder-list').scrollTop=scroll;
+  if(focusedControl)document.getElementById(focusedControl)?.focus({preventScroll:true});
+  if(focused)$('#reminder-panel').querySelector(`[data-reminder-item="${focused}"]`)?.focus({preventScroll:true});
+}
+async function reminderClick(button) {
+  if(button.id==='reminder-toggle'){toggleReminders();return true;}
+  if(button.hasAttribute('data-close-reminders')){toggleReminders(false);$('#reminder-toggle').focus();return true;}
+  if(button.dataset.reminderItem){
+    const item=state.items.find(i=>i.id===button.dataset.reminderItem);
+    toggleReminders(false);
+    if(item)openForm(item.type,item.date,item.id);
+    return true;
+  }
+  if(button.id==='browser-reminder-toggle'){
+    if(requestingReminderPermission)return true;
+    const targetUserId=currentUser.id;
+    const prefs=reminderPreferences();
+    if(prefs.enabled){prefs.enabled=false;saveReminderPreferences(prefs);await closeDesktopNotifications();renderReminders();return true;}
+    if(!notificationSupport()){toast('앱 안의 알림 목록을 이용해 주세요.');return true;}
+    button.disabled=true;requestingReminderPermission=true;
+    try{
+      // Permission is requested only in response to this explicit click.
+      const permission=await Notification.requestPermission();
+      if(currentUser?.id!==targetUserId)return true;
+      if(permission!=='granted'){toast(permission==='denied'?'브라우저 사이트 설정에서 알림 허용을 선택해 주세요.':'알림 허용을 선택하면 브라우저 알림을 받을 수 있어요.');return true;}
+      prefs.enabled=true;saveReminderPreferences(prefs,targetUserId);await checkBrowserReminders();
+    }catch{toast('이 브라우저에서는 시스템 알림을 켤 수 없어요. 앱 안의 알림은 계속 사용할 수 있습니다.');}
+    finally{requestingReminderPermission=false;button.disabled=false;renderReminders();}
+    return true;
+  }
+  return false;
+}
+async function checkBrowserReminders() {
+  if(navigator.locks && currentUser){
+    return navigator.locks.request('dayon-reminders-'+currentUser.id,{ifAvailable:true},lock=>lock?dispatchBrowserReminders():undefined);
+  }
+  return dispatchBrowserReminders();
+}
+async function dispatchBrowserReminders() {
+  if(dispatchingReminders || !currentUser || !notificationSupport() || Notification.permission!=='granted')return;
+  const userId=currentUser.id,prefs=reminderPreferences(userId),day=seoulDate();
+  if(!prefs.enabled)return;
+  if(prefs.day!==day){prefs.day=day;prefs.sent=[];}
+  const fresh=dueReminders(state.items,userId).filter(item=>!prefs.sent.includes(reminderKey(item)));
+  if(!fresh.length)return;
+  dispatchingReminders=true;
+  const oldSent=[...prefs.sent];let delivered=false;
+  prefs.sent=[...new Set([...prefs.sent,...fresh.map(item=>reminderKey(item))])];
+  // Record before asynchronous delivery so other tabs do not repeat the same batch.
+  saveReminderPreferences(prefs,userId);
+  try{
+    const overdue=fresh.filter(item=>item.overdue).length;
+    const options={body:`오늘 마감 ${fresh.length-overdue}건, 기한 지난 업무 ${overdue}건이 있어요. Dayon에서 확인해 주세요.`,tag:'dayon-due-'+userId};
+    if('serviceWorker' in navigator){
+      const registration=await navigator.serviceWorker.register('/sw.js');
+      const ready=registration.active?registration:await navigator.serviceWorker.ready;
+      if(currentUser?.id!==userId || !reminderPreferences(userId).enabled)return;
+      await ready.showNotification(`Dayon · 해야 할 일 ${fresh.length}건`,options);delivered=true;
+      if(currentUser?.id!==userId || !reminderPreferences(userId).enabled)await closeDesktopNotifications();
+    }else{
+      if(currentUser?.id!==userId)return;
+      const notification=new Notification(`Dayon · 해야 할 일 ${fresh.length}건`,options);delivered=true;
+      desktopNotifications.add(notification);
+      notification.onclose=()=>desktopNotifications.delete(notification);
+      notification.onclick=()=>{window.focus();notification.close();if(currentUser)toggleReminders(true);};
+    }
+  }catch{
+    toast('브라우저 알림을 보내지 못했어요. 앱 안의 알림 목록에서 확인해 주세요.');
+  }finally{if(!delivered){const current=reminderPreferences(userId);current.sent=oldSent;saveReminderPreferences(current,userId);}dispatchingReminders=false;}
+}
+async function closeDesktopNotifications() {
+  for(const notification of desktopNotifications)notification.close();desktopNotifications.clear();
+  if('serviceWorker' in navigator){
+    try{const registration=await navigator.serviceWorker.getRegistration('/sw.js');if(registration)for(const notification of await registration.getNotifications())notification.close();}catch{/* In-app state is cleared independently. */}
+  }
+}
+document.addEventListener('click',event=>{
+  if(!$('#reminder-panel').hidden&&!event.target.closest('#reminder-panel,#reminder-toggle'))toggleReminders(false);
+});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&!$('#reminder-panel').hidden){toggleReminders(false);$('#reminder-toggle').focus();}
+});
+navigator.serviceWorker?.addEventListener('message',event=>{
+  if(event.data?.type==='open-reminders'&&currentUser)toggleReminders(true);
+});
+setInterval(()=>{
+  if(!currentUser)return;
+  const day=seoulDate();if(day!==today){today=day;base=new Date(today+'T12:00:00');render();}else renderReminders();
+  checkBrowserReminders();
+},60000);
+window.addEventListener('storage',event=>{if(currentUser&&event.key==='dayon-reminders-'+currentUser.id)renderReminders();});
 
 initialize();

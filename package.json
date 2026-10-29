@@ -7,7 +7,7 @@
     "dev": "node server.mjs",
     "start": "node server.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node --test test/backend.test.mjs test/features.test.mjs",
+    "test": "node --test test/backend.test.mjs test/features.test.mjs test/reminders.test.mjs",
     "test:postgres": "node --test test/postgres.test.mjs test/features.test.mjs"
   },
   "engines": {
