@@ -1,3 +1,5 @@
+import {generateRecurring} from './lib/recurring.mjs';
+import {seoulDate} from './lib/business-days.mjs';
 import {chatRoutes,chatStatus} from './lib/chat.mjs';
 import { featureRoutes } from './lib/workspace-features.mjs';
 import http from 'node:http';
@@ -15,6 +17,7 @@ const invitationAge = 24 * 60 * 60 * 1000;
 const sessionQuery = 'SELECT sessions.*,users.id,users.name,users.username FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires_at>?';
 
 export async function createApp({
+  now = () => new Date(),
   dataDir = process.env.MOA_DATA_DIR || path.join(projectRoot, 'data'),
   setupToken = process.env.MOA_SETUP_TOKEN,
   secureCookie = process.env.MOA_SECURE_COOKIE === '1',
@@ -184,12 +187,14 @@ export async function createApp({
     }
     if (route === '/api/state' && method === 'GET') {
       const user=await auth(req);
+      await db.transaction(async connection => { if (await generateRecurring(connection,seoulDate(now()))) await changed(connection); });
       const result = await db.transaction(async connection => {
         const users = await connection.all('SELECT id,name,username FROM users ORDER BY name,id');
         const items = (await connection.all(`${itemQuery} ORDER BY items.date,${db.itemOrder}`)).map(itemRow);
         const messages = (await connection.all(db.messageQuery)).map(messageRow), stock = Object.create(null);
         for (const item of items) if (item.type === 'inbound' && item.done) stock[item.title] = (stock[item.title] || 0) + item.qty;
-        return { users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
+        const recurring = await connection.all('SELECT s.*,o.name owner,r.name requester FROM recurring_tasks s JOIN users o ON o.id=s.owner_id JOIN users r ON r.id=s.requester_id ORDER BY s.start_date,s.id');
+        return { recurring: recurring.map(s => ({id:s.id,title:s.title,ownerId:s.owner_id,owner:s.owner,requesterId:s.requester_id,requester:s.requester,startDate:s.start_date,stoppedDate:s.stopped_date,version:s.version})), users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
       }, { readOnly: true });
       return json(res, 200, result);
     }
@@ -212,6 +217,41 @@ export async function createApp({
       res.on('close', () => { clearInterval(heartbeat); streams.delete(entry); });
       return;
     }
+    if (route === '/api/recurring' && method === 'POST') {
+      const user = await auth(req,true), body = await jsonBody(req);
+      const item = await validateItem({...body,type:'task',qty:1,tracking:''});
+      if (item.date < seoulDate(now()) || item.date > seoulDate(new Date(now().getTime()+366*86400000))) throw new AppError(422,'반복 시작일은 오늘부터 1년 이내로 선택해 주세요.');
+      const id = randomUUID();
+      await db.transaction(async connection => {
+        await connection.run('INSERT INTO recurring_tasks(id,title,owner_id,requester_id,start_date,note) VALUES(?,?,?,?,?,?)',[id,item.title,item.ownerId,user.id,item.date,item.note]);
+        await generateRecurring(connection,seoulDate(now())); await changed(connection);
+      });
+      await publish(); return json(res,201,{id});
+    }
+    const stopMatch = route.match(/^\/api\/recurring\/([^/]+)\/stop$/);
+    if (stopMatch && method === 'POST') {
+      await auth(req,true); const body = await jsonBody(req);
+      await db.transaction(async connection => {
+        const current = await connection.get('SELECT * FROM recurring_tasks WHERE id=?',[stopMatch[1]]);
+        if (!current) throw new AppError(404,'반복업무를 찾을 수 없습니다.');
+        checkVersion(body,current);
+        await generateRecurring(connection,seoulDate(now()));
+        await connection.run('UPDATE recurring_tasks SET stopped_date=?,version=version+1 WHERE id=?',[seoulDate(now()),current.id]);
+        await changed(connection);
+      });
+      await publish(); return json(res,200,{stopped:true});
+    }
+    const detailsMatch = route.match(/^\/api\/items\/([^/]+)\/details$/);
+    if (detailsMatch && method === 'PATCH') {
+      await auth(req,true); const body = await jsonBody(req);
+      if (typeof body.note !== 'string' || body.note.length > 2000 || !Array.isArray(body.checklist) || body.checklist.length > 30 || body.checklist.some(c => !c || typeof c.text !== 'string' || !c.text.trim() || c.text.length > 200 || typeof c.done !== 'boolean')) throw new AppError(422,'메모는 2,000자, 체크리스트는 항목당 200자·30개까지 입력해 주세요.');
+      const item = await db.transaction(async connection => {
+        const current = await getItem(detailsMatch[1],connection); checkVersion(body,current);
+        await connection.run('UPDATE items SET note=?,checklist=?,version=version+1 WHERE id=?',[body.note.trim(),JSON.stringify(body.checklist.map(c=>({text:c.text.trim(),done:c.done}))),current.id]);
+        await changed(connection); return getItem(current.id,connection);
+      });
+      await publish(); return json(res,200,{item});
+    }
     if (route === '/api/items' && method === 'POST') {
       const user = await auth(req, true), body = await jsonBody(req), item = await validateItem(body), id = randomUUID();
       await db.transaction(async connection => {
@@ -228,8 +268,12 @@ export async function createApp({
         const current = await getItem(itemMatch[1], connection); checkVersion(body, current);
         if (itemMatch[2]) await connection.run('UPDATE items SET done=?,completed_at=?,version=version+1 WHERE id=? AND version=?', [current.done ? 0 : 1, current.done ? null : new Date().toISOString(), current.id, current.version]);
         else {
+          if (current.seriesId && (updated.type !== 'task' || updated.date !== current.date)) throw new AppError(422,'반복업무의 구분과 발생일은 변경할 수 없습니다.');
           if (current.done) throw new AppError(409, '완료를 취소한 후 수정해 주세요.');
           await connection.run('UPDATE items SET title=?,type=?,qty=?,owner_id=?,date=?,note=?,tracking=?,version=version+1 WHERE id=? AND version=?', [updated.title, updated.type, updated.qty, updated.ownerId, updated.date, updated.note, updated.tracking, current.id, current.version]);
+        }
+        if (body.applyToSeries === true && current.seriesId && !itemMatch[2]) {
+          await connection.run('UPDATE recurring_tasks SET title=?,owner_id=?,note=?,version=version+1 WHERE id=? AND stopped_date IS NULL',[updated.title,updated.ownerId,updated.note,current.seriesId]);
         }
         await changed(connection);
         return getItem(current.id, connection);

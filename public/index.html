@@ -43,9 +43,11 @@
       <div class="dialog-title"><h2 id="form-title">새 일정</h2><button type="button" id="close" aria-label="닫기">✕</button></div>
       <label>내용<input name="title" required maxlength="100" placeholder="어떤 일을 함께할까요?"></label>
       <div class="form-row"><label>구분<select name="type"><option value="task">업무</option><option value="inbound">입고</option><option value="shipment">택배 발송</option><option value="meeting">공통 일정</option></select></label><label>날짜<input name="date" type="date" min="2000-01-01" max="2200-12-31" required></label></div>
-      <div class="form-row"><label>담당자<select name="ownerId" required></select></label><label>수량<input name="qty" type="number" min="1" max="1000000" value="1" required></label></div>
+      <div class="form-row"><label>담당자<select name="ownerId" required></select></label><label id="qty-field">수량<input name="qty" type="number" min="1" max="1000000" value="1" required></label><label id="requester-field">요청자<input id="form-requester" readonly></label></div>
+      <p id="recurring-help" class="privacy" hidden>시작일부터 중지일까지 영업일마다 별도 업무가 생성됩니다. 토·일요일과 한국 공휴일·대체공휴일은 제외합니다.</p>
+      <label id="series-edit-field" hidden><input type="checkbox" name="applyToSeries"> 변경한 제목·담당자·메모를 이후 반복업무에도 적용</label>
       <label>메모<textarea name="note" maxlength="2000" placeholder="입고 품목 또는 전달할 내용을 입력하세요."></textarea></label>
-      <label>운송장 번호 (택배 발송)<input name="tracking" maxlength="100" placeholder="택배사와 운송장 번호"></label>
+      <label id="tracking-field">운송장 번호 (택배 발송)<input name="tracking" maxlength="100" placeholder="택배사와 운송장 번호"></label>
       <p class="privacy">등록한 내용은 로그인한 모든 사용자가 함께 볼 수 있어요.</p>
       <p id="form-error" class="form-error" role="alert"></p>
       <button class="primary submit">저장하기</button>
@@ -64,6 +66,7 @@
     <p class="privacy">파일당 5MB, 자료실 전체 25MB까지 올릴 수 있어요. 모든 사용자가 내려받을 수 있습니다.</p>
     <p id="resource-error" class="form-error" role="alert"></p><button type="submit" class="primary submit">자료 저장</button>
   </form></dialog>
+  <dialog id="task-detail-dialog" class="task-detail-drawer" aria-label="업무 상세"></dialog>
   <dialog id="menu-order-dialog" aria-labelledby="menu-order-title">
     <div class="dialog-title"><h2 id="menu-order-title">메뉴 순서</h2><button type="button" id="menu-order-cancel" aria-label="메뉴 순서 닫기">✕</button></div>
     <p class="muted">왼쪽 손잡이를 끌어서 순서를 바꿔 보세요. 화살표도 사용할 수 있어요. 이 브라우저에서 내 계정에만 적용됩니다.</p>

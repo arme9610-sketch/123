@@ -1,3 +1,4 @@
+import {createTaskDetails} from './task-details.js';
 import {enableMenuDrag} from './menu-drag.js';
 import {menuPages, normalizeMenuOrder, moveMenu} from './menu-order.js';
 import {dailyFortune} from './fortune.js';
@@ -51,6 +52,7 @@ function signedOut(message = '') {
   closeDesktopNotifications();toggleReminders(false);$('#reminder-panel').replaceChildren();$('#reminder-count').hidden=true;
   currentUser = null; csrfToken = ''; state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
   invitations = []; inviteResult = null; page = '오늘';searches={};collectionData={};chatSearchActive=false;collectionRequest++;
+  $('#task-detail-dialog').close();
   $('#menu-order-dialog').close();
   $('#manual-dialog').close();$('#resource-dialog').close();
   $('#dialog').close(); $('#main').replaceChildren(); $('#workspace-screen').hidden = true;
@@ -208,12 +210,12 @@ async function refreshInvitations() {
 }
 
 function badge(i){return `<span class="badge ${types[i.type][1]}">${types[i.type][0]}</span>`}
-function row(i){return `<div class="item"><button class="check ${i.done?'checked':''}" data-done="${i.id}" aria-label="${esc(i.title)} ${i.done?'완료 취소':'완료 처리'}">${i.done?'✓':''}</button><div class="item-text"><b class="${i.done?'strike':''}">${esc(i.title)}</b><small>${esc(i.note)||'등록된 메모가 없습니다.'}</small></div>${badge(i)}<span class="person">${esc(i.owner)}</span><button class="dots" data-edit="${i.id}" aria-label="상세 보기">↗</button></div>`}
+function row(i){return `<div class="item"><button class="check ${i.done?'checked':''}" data-done="${i.id}" aria-label="${esc(i.title)} ${i.done?'완료 취소':'완료 처리'}">${i.done?'✓':''}</button><div class="item-text"><button class="text-button ${i.done?'strike':''}" data-detail="${esc(i.id)}">${esc(i.title)}</button><small>${i.seriesId?'반복업무 · ':''}${esc(i.date)} · 요청 ${esc(i.requester)} → 담당 ${esc(i.owner)}</small><small>${esc(i.note)||'등록된 메모가 없습니다.'}</small></div>${badge(i)}<span class="person">${esc(i.owner)}</span><button class="dots" data-edit="${i.id}" aria-label="상세 보기">↗</button></div>`}
 function heading(title,sub,extra=''){return `<div class="heading"><div><p class="eyebrow">EVERY DAY, IN SYNC</p><h1>${title}</h1><p class="subtitle">${sub}</p></div>${extra}</div>`}
 function render(){if(!currentUser)return;today=seoulDate();base=new Date(today+'T12:00:00');const preserved=captureDraft();nav();let html='';const due=state.items.filter(i=>i.date===today), pending=due.filter(i=>!i.done), completed=due.filter(i=>i.done).length;
 if(page==='오늘'){html=heading(`좋은 하루예요, ${esc(currentUser.name)}님 <span class="wave">☀</span>`,'오늘의 흐름을 한눈에 확인하세요.',`<div class="date-pill">${base.getFullYear()}년 ${base.getMonth()+1}월 ${base.getDate()}일 <b>${['일','월','화','수','목','금','토'][base.getDay()]}요일</b></div>`)+`<section class="welcome"><div><span class="tag">ARME WORKSPACE</span><h2>오늘을 가볍게. 함께, 더 선명하게.</h2><p>할 일부터 입고와 발송까지.<br>하루의 모든 흐름을 한눈에.</p><button data-page="공용 달력">달력 살펴보기 <span>↗</span></button></div><div class="art" aria-hidden="true"><div class="art-card"><span>THIS IS OUR DAY</span><strong>${base.getDate()}</strong><div>✦ &nbsp; Make it happen</div></div><div class="art-check">✓</div><span class="spark">✦</span><div class="art-line"></div></div></section><section class="stats">${[['오늘 할 일',pending.filter(i=>i.type==='task').length,'건','blue','☑','업무'],['입고 예정',pending.filter(i=>i.type==='inbound').reduce((a,i)=>a+i.qty,0),'개','purple','↓','입고 · 재고'],['발송할 택배',pending.filter(i=>i.type==='shipment').length,'건','orange','▧','택배 발송'],['오늘 완료',completed,'건','green','✓','업무']].map(a=>`<button class="stat" data-page="${a[5]}"><div><span>${a[0]}</span><i class="${a[3]}">${icon(a[5])}</i></div><strong>${a[1]}<small>${a[2]}</small></strong><p>${a[0]==='오늘 완료'?'차근차근 잘하고 있어요':'함께 확인하는 오늘'} <span>↗</span></p></button>`).join('')}</section><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h2>오늘의 업무 <span>${due.filter(i=>i.type==='task').length}</span></h2><button data-page="업무">전체 보기 →</button></div>${due.filter(i=>i.type==='task').map(row).join('')||empty('오늘 등록된 업무가 없어요.')}<button class="add-row" data-new="task">＋ 새로운 업무 추가</button></section><section class="panel"><div class="panel-head"><h2>함께하는 사람들</h2><span class="muted">${state.users.length}명</span></div>${renderTeam()}<div class="team-note">${state.users.length<4?'직원을 초대하고 함께 시작해 보세요.<button data-page="사용자">새로운 사용자 초대 ↗</button>':'작은 공유가 더 나은 협업을 만들어요.<button data-page="채팅">채팅 열기 ↗</button>'}</div></section></div><section class="panel schedule"><div class="panel-head"><h2>오늘의 입고 & 발송 <span>${due.filter(i=>['inbound','shipment'].includes(i.type)).length}</span></h2><button data-page="공용 달력">달력에서 보기 →</button></div>${table(due.filter(i=>['inbound','shipment'].includes(i.type)))}</section>`;
 }else if(page==='공용 달력'){html=heading('함께 보는 일정','입고, 발송, 업무 일정을 함께 확인하고 준비하세요.',`<button class="primary" data-new="meeting">＋ 일정 등록</button>`)+`<section class="panel"><div class="calendar-toolbar"><div class="month-controls"><button id="prev" aria-label="이전 달">‹</button><h2>${month.getFullYear()}년 ${month.getMonth()+1}월</h2><button id="next" aria-label="다음 달">›</button><button id="this-month">이번 달</button></div><div class="segmented">${['달력','표'].map(v=>`<button data-view="${v}" class="${view===v?'selected':''}">${v}</button>`).join('')}</div></div><div class="filters">${['전체',...Object.values(types).map(v=>v[0])].map(f=>`<button data-filter="${f}" class="${f===filter?'selected':''}">${f}</button>`).join('')}<span>● 입고 &nbsp; ● 발송 &nbsp; ● 업무 &nbsp; ● 일정</span></div>${view==='달력'?calendar():table(filtered().filter(i=>i.date.startsWith(`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}`)))}</section>`;
-}else if(page==='업무'){const items=state.items.filter(i=>i.type==='task'&&(taskTab!=='내 업무'||i.ownerId===currentUser.id));html=heading('업무를 함께, 차근차근','담당자와 마감일을 정하고 진행 상황을 공유하세요.',`<button class="primary" data-new="task">＋ 업무 요청</button>`)+`<div class="tabs">${['전체 업무','내 업무','부탁한 업무'].map(t=>`<button data-tab="${t}" class="${taskTab===t?'selected':''}">${t}</button>`).join('')}</div><section class="panel">${(taskTab==='부탁한 업무'?items.filter(i=>i.requesterId===currentUser.id):items).map(row).join('')||empty('아직 등록된 업무가 없어요.')}</section>`;
+}else if(page==='업무'){const items=state.items.filter(i=>['task','shipment'].includes(i.type)&&(taskTab!=='내 업무'||i.ownerId===currentUser.id));html=heading('업무를 함께, 차근차근','담당자와 마감일을 정하고 진행 상황을 공유하세요.',`<button class="primary" data-new="task">＋ 업무 요청</button>`)+`<div class="tabs">${['전체 업무','내 업무','부탁한 업무'].map(t=>`<button data-tab="${t}" class="${taskTab===t?'selected':''}">${t}</button>`).join('')}</div><section class="panel">${(taskTab==='부탁한 업무'?items.filter(i=>i.requesterId===currentUser.id):items).map(row).join('')||empty('아직 등록된 업무가 없어요.')}</section>` + recurringList();
 }else if(page==='입고 · 재고'||page==='택배 발송'){let type=page==='택배 발송'?'shipment':'inbound';html=heading(page==='택배 발송'?'꼼꼼하게, 택배 발송':'미리 보는 입고, 정확한 재고',type==='shipment'?'발송 예정부터 운송장까지 한곳에서 관리하세요.':'입고 예정 수량은 실제 입고를 완료한 뒤 재고에 반영됩니다.',`<button class="primary" data-new="${type}">＋ ${type==='shipment'?'발송':'입고'} 등록</button>`)+`<section class="panel">${table(state.items.filter(i=>i.type===type))}</section>`+(type==='inbound'?`<section class="panel stock"><div class="panel-head"><h2>입고 완료 재고</h2><span class="muted">등록된 입고의 누적 수량 · 출고 차감 미지원</span></div>${Object.entries(state.stock).map(([k,v])=>`<div class="stock-row"><b>${esc(k)}</b><span>${v}개</span></div>`).join('')||empty('입고를 완료하면 확인된 수량이 이곳에 표시됩니다.')}</section>`:'');
 }else if(page==='오늘의 운세'){html=fortunePage();}else if(page==='사용자'){html=teamSettings();}else if(page==='아카이브'){html=archivePage();}else if(['매뉴얼','자료실'].includes(page)){html=libraryPage(page);}else{html=chatPage();}
 $('#main').innerHTML=html;restoreDraft(preserved);chatWidget.refreshView();
@@ -256,25 +258,45 @@ function openForm(type = 'task', date = today, id = null) {
   editing = id; editingVersion = item?.version ?? null;
   form.reset(); $('#form-error').textContent = '';
   form.querySelector('.submit').disabled = false;
+  const request = !['inbound','meeting'].includes(item?.type || type);
+  const options = request ? [['task','업무'],['shipment','택배 발송'],['recurring','반복업무']] : [['task','업무'],['inbound','입고'],['shipment','택배 발송'],['meeting','공통 일정']];
+  form.elements.type.innerHTML = options.filter(([key]) => !item || key !== 'recurring').map(([key,label])=>`<option value="${key}">${label}</option>`).join('');
   form.elements.type.value = item?.type || type;
+  form.elements.type.disabled = !!item?.seriesId;
+  form.elements.date.readOnly = !!item?.seriesId;
+  $('#form-requester').value = item?.requester || currentUser.name;
+  $('#series-edit-field').hidden = !item?.seriesActive;
   form.elements.date.value = item?.date || date;
   form.elements.ownerId.innerHTML = state.users.map(user => `<option value="${esc(user.id)}">${esc(user.name)}</option>`).join('');
   form.elements.ownerId.value = item?.ownerId || currentUser.id;
   for (const field of ['title', 'qty', 'note', 'tracking']) if (item) form.elements[field].value = item[field] ?? '';
-  $('#form-title').textContent = item ? '일정 상세 · 수정' : '새로운 일정 등록';
+  $('#form-title').textContent = item ? '업무 · 일정 수정' : request ? '업무 요청' : '새로운 일정 등록';
   if (item?.done) { $('#form-error').textContent = '수정하려면 먼저 완료를 취소해 주세요.'; form.querySelector('.submit').disabled = true; }
+  updateItemFields();
   $('#dialog').showModal();
 }
+function updateItemFields() {
+  const type = $('#form').elements.type.value;
+  $('#tracking-field').hidden = type !== 'shipment';
+  $('#qty-field').hidden = type !== 'inbound';
+  $('#requester-field').hidden = type === 'inbound';
+  $('#form').elements.qty.required = type === 'inbound';
+  $('#recurring-help').hidden = type !== 'recurring';
+}
+$('#form').elements.type.addEventListener('change', updateItemFields);
 async function saveItem(form) {
   const data = Object.fromEntries(new FormData(form));
-  data.title = data.title.trim(); data.qty = Number(data.qty);
+  data.title = data.title.trim(); data.type = form.elements.type.value;
+  data.qty = data.type === 'inbound' ? Number(data.qty) : 1;
+  if(data.type !== 'shipment') data.tracking = '';
+  data.applyToSeries = form.elements.applyToSeries.checked;
   if (!data.title) { $('#form-error').textContent = '내용을 입력해 주세요.'; return; }
   const button = form.querySelector('.submit'); button.disabled = true;
   $('#form-error').textContent = '';
   let stale = false;
   try {
     if (editing) data.version = editingVersion;
-    await api(editing ? `/api/items/${encodeURIComponent(editing)}` : '/api/items', { method: editing ? 'PUT' : 'POST', body: data });
+    await api(editing ? `/api/items/${encodeURIComponent(editing)}` : data.type === 'recurring' ? '/api/recurring' : '/api/items', { method: editing ? 'PUT' : 'POST', body: data });
     $('#dialog').close();
     await refreshState(); toast('일정을 저장했어요.');
   } catch (error) {
@@ -295,8 +317,10 @@ async function handleClick(button) {
   if(await reminderClick(button))return;
   await collectionClick(button);
   if (button.dataset.page) await navigate(button.dataset.page);
+  if (button.dataset.detail) { taskDetails.open(button.dataset.detail); return; }
+  if (button.dataset.stopSeries) { await stopSeries(button.dataset.stopSeries); return; }
   if (button.dataset.new) openForm(button.dataset.new);
-  if (button.dataset.edit) openForm('task', today, button.dataset.edit);
+  if (button.dataset.edit) taskDetails.open(button.dataset.edit);
   if (button.dataset.date) openForm('meeting', button.dataset.date);
   if (button.dataset.view) { view = button.dataset.view; render(); }
   if (button.dataset.filter) { filter = button.dataset.filter; render(); }
@@ -509,7 +533,7 @@ async function reminderClick(button) {
   if(button.dataset.reminderItem){
     const item=state.items.find(i=>i.id===button.dataset.reminderItem);
     toggleReminders(false);
-    if(item)openForm(item.type,item.date,item.id);
+    if(item)taskDetails.open(item.id);
     return true;
   }
   if(button.id==='browser-reminder-toggle'){
@@ -586,7 +610,7 @@ navigator.serviceWorker?.addEventListener('message',event=>{
 });
 setInterval(()=>{
   if(!currentUser)return;
-  const day=seoulDate();if(day!==today){today=day;base=new Date(today+'T12:00:00');render();}else renderReminders();
+  const day=seoulDate();if(day!==today){today=day;base=new Date(today+'T12:00:00');refreshState().catch(()=>connection('서버 연결을 확인해 주세요'));}else { renderReminders(); if(state.recurring?.some(s=>!s.stoppedDate))refreshState().catch(()=>{}); }
   checkBrowserReminders();
 },60000);
 window.addEventListener('storage',event=>{if(currentUser&&event.key==='dayon-reminders-'+currentUser.id)renderReminders();});
@@ -618,3 +642,15 @@ async function fortuneClick(button) {
 
 const chatWidget=createChatWidget({api,escape:esc,getUser:()=>currentUser,getState:()=>state,getPage:()=>page,refresh:refreshState,openFullChat:()=>navigate('채팅'),onOpen:()=>toggleReminders(false),toast});
 initialize();
+
+async function stopSeries(id) {
+  const series = state.recurring?.find(s=>s.id===id);
+  if (!series || series.stoppedDate) return;
+  await api('/api/recurring/'+encodeURIComponent(id)+'/stop',{method:'POST',body:{version:series.version}});
+  await refreshState(); toast('반복 요청을 중지했어요. 기존 업무 기록은 유지됩니다.');
+}
+function recurringList() {
+  const series = (state.recurring || []).filter(s=>!s.stoppedDate && (taskTab !== '내 업무' || s.ownerId === currentUser.id) && (taskTab !== '부탁한 업무' || s.requesterId === currentUser.id));
+  return series.length ? `<section class="panel schedule"><div class="panel-head"><h2>반복 요청 중</h2></div>${series.map(s=>`<div class="item"><div class="item-text"><b>${esc(s.title)}</b><small>${esc(s.startDate)}부터 영업일마다 · 요청 ${esc(s.requester)} → 담당 ${esc(s.owner)}</small></div><button data-stop-series="${esc(s.id)}" class="text-button">반복 중지</button></div>`).join('')}</section>` : '';
+}
+const taskDetails = createTaskDetails({api,escape:esc,getItem:id=>state.items.find(i=>i.id===id),refresh:refreshState,edit:item=>openForm(item.type,item.date,item.id),stop:stopSeries,toast});

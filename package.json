@@ -7,13 +7,15 @@
     "dev": "node server.mjs",
     "start": "node server.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node --test test/backend.test.mjs test/features.test.mjs test/reminders.test.mjs test/fortune.test.mjs test/menu-order.test.mjs",
-    "test:postgres": "node --test test/postgres.test.mjs test/features.test.mjs"
+    "test": "node --test test/backend.test.mjs test/features.test.mjs test/reminders.test.mjs test/fortune.test.mjs test/menu-order.test.mjs test/recurring.test.mjs",
+    "test:postgres": "node --test test/postgres.test.mjs test/features.test.mjs test/recurring.test.mjs"
   },
   "engines": {
     "node": ">=24"
   },
   "dependencies": {
+    "date-holidays": "3.38.0",
+    "korean-lunar-calendar": "0.4.0",
     "pg": "8.23.1"
   }
 }
