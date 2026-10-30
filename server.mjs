@@ -1,3 +1,4 @@
+import {officeRoutes,officeSnapshot,validateOffice} from './lib/office-stock.mjs';
 import {generateRecurring} from './lib/recurring.mjs';
 import {seoulDate} from './lib/business-days.mjs';
 import {chatRoutes,chatStatus} from './lib/chat.mjs';
@@ -114,7 +115,7 @@ export async function createApp({
   async function validateItem(body) {
     const title = requireText(body.title, '내용', 100), type = body.type, qty = body.qty;
     const ownerId = body.ownerId, date = body.date, note = body.note ?? '', tracking = body.tracking ?? '';
-    if (!['task', 'inbound', 'shipment', 'meeting'].includes(type)) throw new AppError(422, '올바른 일정 구분을 선택해 주세요.');
+    if (!['task', 'inbound', 'shipment', 'meeting', 'office'].includes(type)) throw new AppError(422, '올바른 일정 구분을 선택해 주세요.');
     if (!Number.isSafeInteger(qty) || qty < 1 || qty > 1000000) throw new AppError(422, '수량은 1~1,000,000 사이 정수로 입력해 주세요.');
     if (typeof ownerId !== 'string' || !(await db.get('SELECT 1 FROM users WHERE id=?', [ownerId]))) throw new AppError(422, '등록된 담당자를 선택해 주세요.');
     if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number(date.slice(0, 4)) < 2000 || Number(date.slice(0, 4)) > 2200) throw new AppError(422, '올바른 날짜를 입력해 주세요.');
@@ -126,16 +127,23 @@ export async function createApp({
     if(typeof dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || dueDate < date || Number(dueDate.slice(0,4)) > 2200)throw new AppError(422,'마감일은 요청일 이후로 선택해 주세요.');
     const due=new Date(dueDate+'T12:00:00Z');
     if(!Number.isFinite(due.getTime()) || due.toISOString().slice(0,10)!==dueDate)throw new AppError(422,'올바른 마감일을 입력해 주세요.');
-    return { title, type, qty, ownerId, date, dueDate, priority, note: note.trim(), tracking: tracking.trim() };
+    const warehouseDate=type==='inbound'?((body.warehouseDate==null||body.warehouseDate==='')?null:body.warehouseDate):null;
+    if(warehouseDate!==null){
+      if(typeof warehouseDate!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(warehouseDate)||warehouseDate<'2000-01-01'||warehouseDate>'2200-12-31')throw new AppError(422,'올바른 창고 입고 날짜를 입력해 주세요.');
+      const warehouse=new Date(warehouseDate+'T12:00:00Z');
+      if(!Number.isFinite(warehouse.getTime())||warehouse.toISOString().slice(0,10)!==warehouseDate)throw new AppError(422,'올바른 창고 입고 날짜를 입력해 주세요.');
+    }
+    return { ...(type==='office'?validateOffice(body):{officeSku:null,officeOperation:null,officeBucket:null}), title, type, qty, ownerId, date, dueDate, priority, warehouseDate, note: note.trim(), tracking: tracking.trim() };
   }
   function checkVersion(body, current) {
     if (!Number.isSafeInteger(body.version) || body.version !== current.version) throw new AppError(409, '다른 직원이 먼저 수정했습니다. 최신 내용을 확인한 후 다시 시도해 주세요.');
   }
 
   const chat = chatRoutes({db,auth,json,changed,publish});
+  const office = officeRoutes({db,auth,json,changed,publish});
   const features = featureRoutes({db,auth,json,changed,publish});
   async function api(req, res, url) {
-    if (await chat(req,res,url) || await features(req,res,url)) return;
+    if (await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
     if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized() });
     if (route === '/api/setup' && method === 'POST') {
@@ -199,7 +207,7 @@ export async function createApp({
         const messages = (await connection.all(db.messageQuery)).map(messageRow), stock = Object.create(null);
         for (const item of items) if (item.type === 'inbound' && item.done) stock[item.title] = (stock[item.title] || 0) + item.qty;
         const recurring = await connection.all('SELECT s.*,o.name owner,r.name requester FROM recurring_tasks s JOIN users o ON o.id=s.owner_id JOIN users r ON r.id=s.requester_id ORDER BY s.start_date,s.id');
-        return { recurring: recurring.map(s => ({id:s.id,title:s.title,ownerId:s.owner_id,owner:s.owner,requesterId:s.requester_id,requester:s.requester,startDate:s.start_date,stoppedDate:s.stopped_date,version:s.version})), users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
+        return {officeStock:await officeSnapshot(connection), recurring: recurring.map(s => ({id:s.id,title:s.title,ownerId:s.owner_id,owner:s.owner,requesterId:s.requester_id,requester:s.requester,startDate:s.start_date,stoppedDate:s.stopped_date,version:s.version})), users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
       }, { readOnly: true });
       return json(res, 200, result);
     }
@@ -260,7 +268,7 @@ export async function createApp({
     if (route === '/api/items' && method === 'POST') {
       const user = await auth(req, true), body = await jsonBody(req), item = await validateItem(body), id = randomUUID();
       await db.transaction(async connection => {
-        await connection.run('INSERT INTO items(id,title,type,qty,owner_id,requester_id,date,note,tracking,priority,due_date) VALUES(?,?,?,?,?,?,?,?,?,?,?)', [id, item.title, item.type, item.qty, item.ownerId, user.id, item.date, item.note, item.tracking, item.priority, item.dueDate]);
+        await connection.run('INSERT INTO items(id,title,type,qty,owner_id,requester_id,date,note,tracking,priority,due_date,office_sku,office_operation,office_bucket,warehouse_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [id, item.title, item.type, item.qty, item.ownerId, user.id, item.date, item.note, item.tracking, item.priority, item.dueDate,item.officeSku,item.officeOperation,item.officeBucket,item.warehouseDate]);
         await changed(connection);
       });
       await publish(); return json(res, 201, { item: await getItem(id) });
@@ -275,7 +283,7 @@ export async function createApp({
         else {
           if (current.seriesId && (updated.type !== 'task' || updated.date !== current.date)) throw new AppError(422,'반복업무의 구분과 발생일은 변경할 수 없습니다.');
           if (current.done) throw new AppError(409, '완료를 취소한 후 수정해 주세요.');
-          await connection.run('UPDATE items SET title=?,type=?,qty=?,owner_id=?,date=?,note=?,tracking=?,priority=?,due_date=?,version=version+1 WHERE id=? AND version=?', [updated.title, updated.type, updated.qty, updated.ownerId, updated.date, updated.note, updated.tracking, updated.priority, updated.dueDate, current.id, current.version]);
+          await connection.run('UPDATE items SET title=?,type=?,qty=?,owner_id=?,date=?,note=?,tracking=?,priority=?,due_date=?,office_sku=?,office_operation=?,office_bucket=?,warehouse_date=?,version=version+1 WHERE id=? AND version=?', [updated.title, updated.type, updated.qty, updated.ownerId, updated.date, updated.note, updated.tracking, updated.priority, updated.dueDate, updated.officeSku,updated.officeOperation,updated.officeBucket,updated.warehouseDate,current.id, current.version]);
         }
         if (body.applyToSeries === true && current.seriesId && !itemMatch[2]) {
           await connection.run('UPDATE recurring_tasks SET title=?,owner_id=?,note=?,priority=?,due_offset=?,version=version+1 WHERE id=? AND stopped_date IS NULL',[updated.title,updated.ownerId,updated.note,updated.priority,Math.round((Date.parse(updated.dueDate)-Date.parse(updated.date))/86400000),current.seriesId]);

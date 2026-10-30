@@ -7,8 +7,8 @@
     "dev": "node server.mjs",
     "start": "node server.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node --test test/backend.test.mjs test/features.test.mjs test/reminders.test.mjs test/fortune.test.mjs test/menu-order.test.mjs test/recurring.test.mjs test/priority.test.mjs test/office-hours.test.mjs",
-    "test:postgres": "node --test test/postgres.test.mjs test/features.test.mjs test/recurring.test.mjs test/priority.test.mjs"
+    "test": "node --test test/backend.test.mjs test/features.test.mjs test/reminders.test.mjs test/fortune.test.mjs test/menu-order.test.mjs test/recurring.test.mjs test/priority.test.mjs test/office-hours.test.mjs test/office-stock.test.mjs",
+    "test:postgres": "node --test test/postgres.test.mjs test/features.test.mjs test/recurring.test.mjs test/priority.test.mjs test/office-stock.test.mjs"
   },
   "engines": {
     "node": ">=24"

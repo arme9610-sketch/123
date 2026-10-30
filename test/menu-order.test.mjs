@@ -19,3 +19,7 @@ test('movement preserves all menus and ignores moves beyond either edge', () => 
   assert.deepEqual(moveMenu(moved, 1, 1), original);
   for (const [index, direction] of [[0, -1], [original.length - 1, 1], [-1, 1], [99, -1], [1, 2]]) assert.deepEqual(moveMenu(original, index, direction), original);
 });
+
+test('renaming inbound inventory to imports preserves the user menu position',()=>{
+ const order=normalizeMenuOrder(['채팅','입고 · 재고','업무']);assert.deepEqual(order.slice(0,3),['채팅','수입','업무']);assert.equal(order.filter(name=>name==='수입').length,1);assert.ok(order.includes('사무실 재고'));
+});
