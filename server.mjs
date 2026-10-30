@@ -1,4 +1,4 @@
-import {officeRoutes,officeSnapshot,validateOffice} from './lib/office-stock.mjs';
+import {officeRoutes,officeSnapshot,officeLogs,validateOffice} from './lib/office-stock.mjs';
 import {generateRecurring} from './lib/recurring.mjs';
 import {seoulDate} from './lib/business-days.mjs';
 import {chatRoutes,chatStatus} from './lib/chat.mjs';
@@ -207,7 +207,7 @@ export async function createApp({
         const messages = (await connection.all(db.messageQuery)).map(messageRow), stock = Object.create(null);
         for (const item of items) if (item.type === 'inbound' && item.done) stock[item.title] = (stock[item.title] || 0) + item.qty;
         const recurring = await connection.all('SELECT s.*,o.name owner,r.name requester FROM recurring_tasks s JOIN users o ON o.id=s.owner_id JOIN users r ON r.id=s.requester_id ORDER BY s.start_date,s.id');
-        return {officeStock:await officeSnapshot(connection), recurring: recurring.map(s => ({id:s.id,title:s.title,ownerId:s.owner_id,owner:s.owner,requesterId:s.requester_id,requester:s.requester,startDate:s.start_date,stoppedDate:s.stopped_date,version:s.version})), users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
+        return {officeStockLogs:await officeLogs(connection),officeStock:await officeSnapshot(connection), recurring: recurring.map(s => ({id:s.id,title:s.title,ownerId:s.owner_id,owner:s.owner,requesterId:s.requester_id,requester:s.requester,startDate:s.start_date,stoppedDate:s.stopped_date,version:s.version})), users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
       }, { readOnly: true });
       return json(res, 200, result);
     }

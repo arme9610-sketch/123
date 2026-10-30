@@ -18,10 +18,14 @@ for(const engine of process.env.MOA_TEST_DATABASE_URL?['postgres']:['sqlite']){
   assert.equal((await state()).officeStock.length,32);
   const initial={goodQty:10,returnedQty:4,serviceQty:3,defectiveQty:2,version:(await stock()).version};
   const path='/api/office-stock/'+sku;
+  assert.equal((await req('/api/office-stock-logs','GET',undefined,{'Content-Type':'application/json'})).status,401);
   assert.equal((await req(path,'PUT',initial,{'Content-Type':'application/json'})).status,401);
   assert.equal((await req(path,'PUT',initial,{'Content-Type':'application/json',cookie:auth.cookie})).status,403);
   assert.equal((await req(path,'PUT',initial)).status,200);
   assert.equal((await req(path,'PUT',initial)).status,409);
+  let logs=(await req('/api/office-stock-logs')).data;
+  assert.equal(logs.entries.length,4);assert.ok(logs.entries.every(l=>l.author==='재고 담당'&&l.user_id===auth.data.user.id&&l.before_qty===0));
+  const version=(await stock()).version;assert.equal((await req(path,'PUT',{...initial,version})).status,200);assert.equal((await stock()).version,version);assert.equal((await req('/api/office-stock-logs')).data.entries.length,4);
   for(const [field,value] of [['goodQty',-1],['returnedQty',1.5],['serviceQty',null],['defectiveQty',1000000001]])assert.equal((await req(path,'PUT',{...initial,[field]:value,version:(await stock()).version})).status,422);
   for(const operation of ['return','service','defective','issue']){
    const r=await req('/api/items','POST',{type:'office',title:operation+' 표시용 업무',qty:100,date:'2026-10-30',ownerId:auth.data.user.id,officeSku:sku,officeOperation:operation,officeBucket:'good'});assert.equal(r.status,201);let item=r.data.item;
@@ -38,6 +42,11 @@ for(const engine of process.env.MOA_TEST_DATABASE_URL?['postgres']:['sqlite']){
   const change=await req('/api/items/'+imported.data.item.id,'PUT',{...imported.data.item,warehouseDate:'2026-11-05'});assert.equal(change.status,200);assert.equal(change.data.item.warehouseDate,'2026-11-05');
   assert.equal((await req('/api/items','POST',{type:'inbound',title:'날짜 검증',qty:1,date:'2026-11-02',warehouseDate:'2026-02-30',ownerId:auth.data.user.id})).status,422);
   await app.close();await start();assert.equal((await state()).items.find(i=>i.id===imported.data.item.id).warehouseDate,'2026-11-05');
+  logs=(await req('/api/office-stock-logs')).data;assert.equal(logs.entries.length,8);assert.ok(logs.entries.some(l=>l.before_qty===12&&l.after_qty===10&&l.bucket==='good'));assert.equal((await state()).officeStockLogs.entries.length,8);
+  assert.equal((await req('/api/office-stock-logs?beforeTime=bad&beforeId=bad')).status,422);
+  for(let i=0;i<14;i++){const version=(await stock()).version;assert.equal((await req(path,'PUT',{goodQty:20+i,returnedQty:20+i,serviceQty:20+i,defectiveQty:20+i,version,author:'위조 작성자'})).status,200);}
+  const first=(await req('/api/office-stock-logs')).data;assert.equal(first.entries.length,50);assert.equal(first.hasMore,true);const second=(await req('/api/office-stock-logs?'+new URLSearchParams({beforeTime:first.nextCursor.time,beforeId:first.nextCursor.id}))).data;assert.equal(second.entries.length,14);assert.equal(second.hasMore,false);assert.equal(new Set([...first.entries,...second.entries].map(l=>l.id)).size,64);assert.ok(first.entries.every(l=>l.author==='재고 담당'));
+  await app.close();await start();assert.equal((await req('/api/office-stock-logs')).data.entries[0].id,first.entries[0].id);
   assert.equal((await req('/api/items','POST',{type:'office',title:'위조 옵션',qty:1,date:'2026-10-30',ownerId:auth.data.user.id,officeSku:'fake',officeOperation:'return'})).status,422);
  });
 }
