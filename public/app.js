@@ -1,3 +1,4 @@
+import {menuPages, normalizeMenuOrder, moveMenu} from './menu-order.js';
 import {dailyFortune} from './fortune.js';
 import {createChatWidget} from './chat-widget.js';
 import { dueReminders, reminderKey, seoulDate } from './reminders.js';
@@ -49,6 +50,7 @@ function signedOut(message = '') {
   closeDesktopNotifications();toggleReminders(false);$('#reminder-panel').replaceChildren();$('#reminder-count').hidden=true;
   currentUser = null; csrfToken = ''; state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
   invitations = []; inviteResult = null; page = '오늘';searches={};collectionData={};chatSearchActive=false;collectionRequest++;
+  $('#menu-order-dialog').close();
   $('#manual-dialog').close();$('#resource-dialog').close();
   $('#dialog').close(); $('#main').replaceChildren(); $('#workspace-screen').hidden = true;
   showAuth(inviteToken ? 'join' : 'login', message);
@@ -134,8 +136,43 @@ const iconPaths={
  '사용자':'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4 21v-2a8 8 0 0 1 16 0v2'
 };
 function icon(name){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${iconPaths[name]||iconPaths['업무']}"/></svg>`;}
+let menuDraft = [];
+const menuOrders = new Map();
+function readMenuOrder() {
+  const key = 'dayon-menu-order-' + currentUser.id;
+  if (menuOrders.has(key)) return menuOrders.get(key);
+  try { return normalizeMenuOrder(JSON.parse(localStorage.getItem(key))); }
+  catch { return [...menuPages]; }
+}
+function renderMenuEditor(focusIndex, direction) {
+  $('#menu-order-list').innerHTML = menuDraft.map((name, index) => `<li><span>${esc(name)}</span><button type="button" data-menu-index="${index}" data-menu-direction="-1" aria-label="${esc(name)} 위로 이동" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-menu-index="${index}" data-menu-direction="1" aria-label="${esc(name)} 아래로 이동" ${index === menuDraft.length - 1 ? 'disabled' : ''}>↓</button></li>`).join('');
+  if (focusIndex !== undefined) {
+    const row = $('#menu-order-list').children[focusIndex];
+    (row.querySelector(`[data-menu-direction="${direction}"]:not(:disabled)`) || row.querySelector('button:not(:disabled)')).focus();
+  }
+}
+function menuOrderClick(button) {
+  if (button.id === 'menu-order-open') {
+    menuDraft = [...readMenuOrder()]; renderMenuEditor(); $('#menu-order-dialog').showModal(); return true;
+  }
+  if (button.dataset.menuIndex !== undefined) {
+    const index = Number(button.dataset.menuIndex), direction = Number(button.dataset.menuDirection);
+    menuDraft = moveMenu(menuDraft, index, direction); renderMenuEditor(index + direction, direction); return true;
+  }
+  if (button.id === 'menu-order-reset') { menuDraft = [...menuPages]; renderMenuEditor(); return true; }
+  if (button.id === 'menu-order-cancel') { $('#menu-order-dialog').close(); return true; }
+  if (button.id === 'menu-order-save') {
+    const key = 'dayon-menu-order-' + currentUser.id;
+    menuOrders.set(key, [...menuDraft]);
+    let saved = true;
+    try { localStorage.setItem(key, JSON.stringify(menuDraft)); } catch { saved = false; }
+    $('#menu-order-dialog').close(); nav();
+    toast(saved ? '메뉴 순서를 저장했어요.' : '이 창에서만 적용했어요. 브라우저 저장 공간을 사용할 수 없어요.'); return true;
+  }
+  return false;
+}
 function nav() {
-  const pages = ['오늘', '오늘의 운세', '업무', '공용 달력', '입고 · 재고', '택배 발송', '채팅', '아카이브', '매뉴얼', '자료실', '사용자'];
+  const pages = readMenuOrder();
   $('#nav').innerHTML = pages.map((p, i) => `<button class="${page === p ? 'active' : ''}" data-page="${p}"><span aria-hidden="true">${icon(p)}</span>${p}</button>`).join('');
   $('#breadcrumb').textContent = page;
   $('#profile-avatar').textContent = currentUser.name[0];
@@ -242,6 +279,7 @@ async function navigate(nextPage) {
 async function handleClick(button) {
   if (button.dataset.auth) { showAuth(button.dataset.auth); return; }
   if (!currentUser) return;
+  if(menuOrderClick(button))return;
   if(await fortuneClick(button))return;
   if(await reminderClick(button))return;
   await collectionClick(button);

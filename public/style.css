@@ -103,3 +103,16 @@ dialog{width:490px;max-width:calc(100vw - 32px);max-height:90dvh;overflow-y:auto
 .fortune-cookie.is-cracking .cookie-left{animation:fortune-left .65s cubic-bezier(.2,.7,.3,1) both}.fortune-cookie.is-cracking .cookie-right{animation:fortune-right .65s cubic-bezier(.2,.7,.3,1) both}
 @keyframes fortune-left{from{transform:translate(0,0) rotate(0)}to{transform:translate(-12px,1px) rotate(-9deg)}}
 @keyframes fortune-right{from{transform:translate(0,0) rotate(0)}to{transform:translate(12px,1px) rotate(9deg)}}
+
+.menu-order-open{align-self:flex-start;margin-top:10px;padding:8px 12px;color:var(--secondary);font-size:11px;flex-shrink:0}
+.menu-order-open:hover{background:var(--surface-muted);border-radius:8px}
+#menu-order-dialog{max-height:85dvh;overflow-y:auto}
+#menu-order-dialog>p{font-size:12px;line-height:1.7}
+.menu-order-list{list-style:none;padding:0;margin:18px 0;display:grid;gap:6px}
+.menu-order-list li{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px}
+.menu-order-list li>span{flex:1}
+.menu-order-list button{border:1px solid var(--line);border-radius:8px;min-width:44px;min-height:44px;color:var(--text)}
+.menu-order-list button:disabled{opacity:.3;cursor:default}
+.menu-order-actions{display:flex;justify-content:space-between;gap:12px}
+.menu-order-actions button{padding:12px;border-radius:10px}
+@media(max-width:700px){.menu-order-open{margin-top:8px}}

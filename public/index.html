@@ -16,6 +16,7 @@
       <a class="brand" href="/">Dayon<span>ARME WORKSPACE</span></a>
       <div class="workspace"><b>ARME</b><small id="team-size">공유 워크스페이스</small></div>
       <nav id="nav" aria-label="주 메뉴"></nav>
+      <button type="button" id="menu-order-open" class="menu-order-open">메뉴 순서</button>
       <div class="aside-bottom"><span class="online"></span> 모든 업무가 한곳에
         <div class="profile"><div class="avatar" id="profile-avatar"></div><div><b id="profile-name"></b></div></div>
         <button id="logout" class="logout">로그아웃</button>
@@ -63,6 +64,12 @@
     <p class="privacy">파일당 5MB, 자료실 전체 25MB까지 올릴 수 있어요. 모든 사용자가 내려받을 수 있습니다.</p>
     <p id="resource-error" class="form-error" role="alert"></p><button type="submit" class="primary submit">자료 저장</button>
   </form></dialog>
+  <dialog id="menu-order-dialog" aria-labelledby="menu-order-title">
+    <div class="dialog-title"><h2 id="menu-order-title">메뉴 순서</h2><button type="button" id="menu-order-cancel" aria-label="메뉴 순서 닫기">✕</button></div>
+    <p class="muted">화살표로 순서를 바꿔 보세요. 이 브라우저에서 내 계정에만 적용됩니다.</p>
+    <ol id="menu-order-list" class="menu-order-list"></ol>
+    <div class="menu-order-actions"><button type="button" id="menu-order-reset">기본 순서로</button><button type="button" id="menu-order-save" class="primary">저장</button></div>
+  </dialog>
   <div id="toast" role="status"></div>
   <script type="module" src="/app.js"></script>
 </body>
