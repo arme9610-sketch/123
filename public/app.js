@@ -1,3 +1,4 @@
+import {enableMenuDrag} from './menu-drag.js';
 import {menuPages, normalizeMenuOrder, moveMenu} from './menu-order.js';
 import {dailyFortune} from './fortune.js';
 import {createChatWidget} from './chat-widget.js';
@@ -145,15 +146,25 @@ function readMenuOrder() {
   catch { return [...menuPages]; }
 }
 function renderMenuEditor(focusIndex, direction) {
-  $('#menu-order-list').innerHTML = menuDraft.map((name, index) => `<li><span>${esc(name)}</span><button type="button" data-menu-index="${index}" data-menu-direction="-1" aria-label="${esc(name)} 위로 이동" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-menu-index="${index}" data-menu-direction="1" aria-label="${esc(name)} 아래로 이동" ${index === menuDraft.length - 1 ? 'disabled' : ''}>↓</button></li>`).join('');
+  $('#menu-order-list').innerHTML = menuDraft.map((name, index) => `<li data-menu-name="${esc(name)}"><button type="button" class="menu-drag-handle" data-menu-drag aria-label="${esc(name)} 드래그하여 이동" title="끌어서 이동"><span aria-hidden="true">⠿</span></button><span>${esc(name)}</span><button type="button" data-menu-index="${index}" data-menu-direction="-1" aria-label="${esc(name)} 위로 이동" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-menu-index="${index}" data-menu-direction="1" aria-label="${esc(name)} 아래로 이동" ${index === menuDraft.length - 1 ? 'disabled' : ''}>↓</button></li>`).join('');
   if (focusIndex !== undefined) {
     const row = $('#menu-order-list').children[focusIndex];
     (row.querySelector(`[data-menu-direction="${direction}"]:not(:disabled)`) || row.querySelector('button:not(:disabled)')).focus();
   }
 }
+enableMenuDrag($('#menu-order-list'), {
+  onDrop(order, name) {
+    menuDraft = normalizeMenuOrder(order);
+    renderMenuEditor();
+    const row = [...$('#menu-order-list').children].find(row => row.dataset.menuName === name);
+    row?.querySelector('[data-menu-drag]').focus({preventScroll:true});
+    $('#menu-order-status').textContent = `${name}, ${menuDraft.indexOf(name) + 1}번째로 이동했어요.`;
+  },
+  onCancel() { renderMenuEditor(); }
+});
 function menuOrderClick(button) {
   if (button.id === 'menu-order-open') {
-    menuDraft = [...readMenuOrder()]; renderMenuEditor(); $('#menu-order-dialog').showModal(); return true;
+    menuDraft = [...readMenuOrder()]; $('#menu-order-status').textContent = ''; renderMenuEditor(); $('#menu-order-dialog').showModal(); return true;
   }
   if (button.dataset.menuIndex !== undefined) {
     const index = Number(button.dataset.menuIndex), direction = Number(button.dataset.menuDirection);

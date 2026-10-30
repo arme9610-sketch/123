@@ -66,7 +66,8 @@
   </form></dialog>
   <dialog id="menu-order-dialog" aria-labelledby="menu-order-title">
     <div class="dialog-title"><h2 id="menu-order-title">메뉴 순서</h2><button type="button" id="menu-order-cancel" aria-label="메뉴 순서 닫기">✕</button></div>
-    <p class="muted">화살표로 순서를 바꿔 보세요. 이 브라우저에서 내 계정에만 적용됩니다.</p>
+    <p class="muted">왼쪽 손잡이를 끌어서 순서를 바꿔 보세요. 화살표도 사용할 수 있어요. 이 브라우저에서 내 계정에만 적용됩니다.</p>
+    <p id="menu-order-status" class="sr-only" role="status"></p>
     <ol id="menu-order-list" class="menu-order-list"></ol>
     <div class="menu-order-actions"><button type="button" id="menu-order-reset">기본 순서로</button><button type="button" id="menu-order-save" class="primary">저장</button></div>
   </dialog>
