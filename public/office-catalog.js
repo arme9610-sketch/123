@@ -7,5 +7,5 @@ export const officeCatalog=Object.freeze([
  {id:'pouch-set',model:'파우치세트',size:'단일상품',color:'단일',label:'파우치세트 (단일상품)'}
 ]);
 export const officeOperations={return:'반품 입고',defective:'불량 입고',service:'A/S 입고',issue:'출고'};
-export const officeBuckets={good:'정상 재고',returned:'반품 재고',service:'A/S 재고',defective:'불량 재고'};
+export const officeBuckets={good:'정상 재고',returned:'반품 재고',service:'A/S 재고',defective:'당근'};
 export function stockBucket(operation,bucket='good'){return operation==='defective'?'defective':operation==='return'?'returned':operation==='service'?'service':bucket;}
