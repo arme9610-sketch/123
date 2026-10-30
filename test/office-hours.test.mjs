@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {officeHours} from '../lib/office-hours.mjs';
+import {reconcile} from '../scripts/render-office-hours.mjs';
+test('office hours use Korea 09:00 inclusive and 18:00 exclusive, excluding weekends and holidays',()=>{
+ for(const [instant,open] of [['2026-10-30T00:00:00Z',true],['2026-10-29T23:59:59Z',false],['2026-10-30T08:59:59Z',true],['2026-10-30T09:00:00Z',false],['2026-10-31T01:00:00Z',false],['2026-11-01T01:00:00Z',false],['2026-10-09T01:00:00Z',false],['2026-02-16T01:00:00Z',false],['2026-11-02T00:00:00Z',true]])assert.equal(officeHours(new Date(instant)).open,open,instant);
+});
+const service={id:'srv-test',type:'web_service',serviceDetails:{url:'https://one23-h665.onrender.com'},suspended:'suspended'};
+function fake(state=service){const calls=[];return {calls,request:async(url,options={})=>{calls.push([url,options.method??'GET']);if(url.includes('/services?'))return Response.json([{service:state}]);if(url.endsWith('/resume')||url.endsWith('/suspend'))return new Response(null,{status:204});if(url.endsWith('/api/status'))return Response.json({initialized:true});return Response.json(state);}};}
+test('resumes only the target site on a business morning and checks readiness',async()=>{const f=fake();assert.equal((await reconcile({key:'test-only',now:new Date('2026-11-02T00:00:00Z'),...f})).action,'running');assert.ok(f.calls.some(([u,m])=>u.endsWith('/resume')&&m==='POST'));});
+test('stops at closing, skips redundant stops, and never wakes on a holiday or delayed run',async()=>{for(const time of ['2026-11-02T09:00:00Z','2026-10-09T00:10:00Z','2026-10-31T00:00:00Z']){const f=fake({...service,suspended:'not_suspended'});assert.equal((await reconcile({key:'test-only',now:new Date(time),...f})).action,'suspended');assert.ok(f.calls.some(([u,m])=>u.endsWith('/suspend')&&m==='POST'));assert.ok(!f.calls.some(([u])=>u.includes('/api/status')||u.endsWith('/resume')));}const f=fake();await reconcile({key:'test-only',now:new Date('2026-11-01T01:00:00Z'),...f});assert.ok(!f.calls.some(([,m])=>m==='POST'));});
+test('fails safely for missing credentials, wrong service, and denied management access',async()=>{await assert.rejects(reconcile({key:''}),/secret/);await assert.rejects(reconcile({key:'test-only',serviceId:'srv-test',...fake({...service,serviceDetails:{url:'https://another.onrender.com'}})}),/Refusing/);await assert.rejects(reconcile({key:'test-only',request:async()=>new Response(null,{status:403})}),/HTTP 403/);});

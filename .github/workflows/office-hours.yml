@@ -1,0 +1,32 @@
+name: Dayon office hours
+on:
+  schedule:
+    # Korea 09:00 / 18:00; GitHub schedules use UTC.
+    - cron: '0 0,9 * * *'
+    # Recover from transient delays and keep the morning service ready until 09:20.
+    - cron: '5,10,15,20 0,9 * * 1-5'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dayon-office-hours
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    # Enable only after the secret is securely configured and a manual test succeeds.
+    if: github.event_name == 'workflow_dispatch' || vars.DAYON_SCHEDULE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Reconcile office hours in Asia/Seoul
+        run: node scripts/render-office-hours.mjs
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          MOA_HOLIDAYS: ${{ vars.MOA_HOLIDAYS }}
