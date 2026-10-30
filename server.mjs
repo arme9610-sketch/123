@@ -121,7 +121,12 @@ export async function createApp({
     const parsed = new Date(date + 'T12:00:00Z');
     if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) throw new AppError(422, '올바른 날짜를 입력해 주세요.');
     if (typeof note !== 'string' || note.length > 2000 || typeof tracking !== 'string' || tracking.length > 100) throw new AppError(422, '메모는 2,000자, 운송장 정보는 100자 이내로 입력해 주세요.');
-    return { title, type, qty, ownerId, date, note: note.trim(), tracking: tracking.trim() };
+    const priority=body.priority ?? 'normal', dueDate=body.dueDate ?? date;
+    if(!['normal','urgent'].includes(priority))throw new AppError(422,'우선순위는 보통 또는 긴급으로 선택해 주세요.');
+    if(typeof dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || dueDate < date || Number(dueDate.slice(0,4)) > 2200)throw new AppError(422,'마감일은 요청일 이후로 선택해 주세요.');
+    const due=new Date(dueDate+'T12:00:00Z');
+    if(!Number.isFinite(due.getTime()) || due.toISOString().slice(0,10)!==dueDate)throw new AppError(422,'올바른 마감일을 입력해 주세요.');
+    return { title, type, qty, ownerId, date, dueDate, priority, note: note.trim(), tracking: tracking.trim() };
   }
   function checkVersion(body, current) {
     if (!Number.isSafeInteger(body.version) || body.version !== current.version) throw new AppError(409, '다른 직원이 먼저 수정했습니다. 최신 내용을 확인한 후 다시 시도해 주세요.');
@@ -223,7 +228,7 @@ export async function createApp({
       if (item.date < seoulDate(now()) || item.date > seoulDate(new Date(now().getTime()+366*86400000))) throw new AppError(422,'반복 시작일은 오늘부터 1년 이내로 선택해 주세요.');
       const id = randomUUID();
       await db.transaction(async connection => {
-        await connection.run('INSERT INTO recurring_tasks(id,title,owner_id,requester_id,start_date,note) VALUES(?,?,?,?,?,?)',[id,item.title,item.ownerId,user.id,item.date,item.note]);
+        await connection.run('INSERT INTO recurring_tasks(id,title,owner_id,requester_id,start_date,note,priority,due_offset) VALUES(?,?,?,?,?,?,?,?)',[id,item.title,item.ownerId,user.id,item.date,item.note,item.priority,Math.round((Date.parse(item.dueDate)-Date.parse(item.date))/86400000)]);
         await generateRecurring(connection,seoulDate(now())); await changed(connection);
       });
       await publish(); return json(res,201,{id});
@@ -255,7 +260,7 @@ export async function createApp({
     if (route === '/api/items' && method === 'POST') {
       const user = await auth(req, true), body = await jsonBody(req), item = await validateItem(body), id = randomUUID();
       await db.transaction(async connection => {
-        await connection.run('INSERT INTO items(id,title,type,qty,owner_id,requester_id,date,note,tracking) VALUES(?,?,?,?,?,?,?,?,?)', [id, item.title, item.type, item.qty, item.ownerId, user.id, item.date, item.note, item.tracking]);
+        await connection.run('INSERT INTO items(id,title,type,qty,owner_id,requester_id,date,note,tracking,priority,due_date) VALUES(?,?,?,?,?,?,?,?,?,?,?)', [id, item.title, item.type, item.qty, item.ownerId, user.id, item.date, item.note, item.tracking, item.priority, item.dueDate]);
         await changed(connection);
       });
       await publish(); return json(res, 201, { item: await getItem(id) });
@@ -270,10 +275,10 @@ export async function createApp({
         else {
           if (current.seriesId && (updated.type !== 'task' || updated.date !== current.date)) throw new AppError(422,'반복업무의 구분과 발생일은 변경할 수 없습니다.');
           if (current.done) throw new AppError(409, '완료를 취소한 후 수정해 주세요.');
-          await connection.run('UPDATE items SET title=?,type=?,qty=?,owner_id=?,date=?,note=?,tracking=?,version=version+1 WHERE id=? AND version=?', [updated.title, updated.type, updated.qty, updated.ownerId, updated.date, updated.note, updated.tracking, current.id, current.version]);
+          await connection.run('UPDATE items SET title=?,type=?,qty=?,owner_id=?,date=?,note=?,tracking=?,priority=?,due_date=?,version=version+1 WHERE id=? AND version=?', [updated.title, updated.type, updated.qty, updated.ownerId, updated.date, updated.note, updated.tracking, updated.priority, updated.dueDate, current.id, current.version]);
         }
         if (body.applyToSeries === true && current.seriesId && !itemMatch[2]) {
-          await connection.run('UPDATE recurring_tasks SET title=?,owner_id=?,note=?,version=version+1 WHERE id=? AND stopped_date IS NULL',[updated.title,updated.ownerId,updated.note,current.seriesId]);
+          await connection.run('UPDATE recurring_tasks SET title=?,owner_id=?,note=?,priority=?,due_offset=?,version=version+1 WHERE id=? AND stopped_date IS NULL',[updated.title,updated.ownerId,updated.note,updated.priority,Math.round((Date.parse(updated.dueDate)-Date.parse(updated.date))/86400000),current.seriesId]);
         }
         await changed(connection);
         return getItem(current.id, connection);
