@@ -9,7 +9,7 @@ self.addEventListener('notificationclick', event => {
     const windowClient = clients.find(client => new URL(client.url).origin === self.location.origin);
     if (windowClient) {
       await windowClient.focus();
-      windowClient.postMessage({type:chat?'open-chat':'open-reminders'});
+      windowClient.postMessage({type:chat?'open-chat':'open-reminders',userId:event.notification.data?.userId});
     } else await self.clients.openWindow(chat?'/#chat':'/#reminders');
   })());
 });

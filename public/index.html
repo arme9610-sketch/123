@@ -23,7 +23,7 @@
       </div>
     </aside>
     <div class="shell">
-      <header><span>워크스페이스 <i>/</i> <b id="breadcrumb">오늘</b></span><div><span id="connection" class="connection" role="status">연결 중</span><button type="button" id="theme-toggle" class="theme-toggle" data-theme-toggle aria-label="야간 모드로 전환"></button><button type="button" id="reminder-toggle" class="reminder-toggle" aria-label="해야 할 일 알림" aria-expanded="false" aria-controls="reminder-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4"/></svg><span id="reminder-count" class="reminder-count" hidden></span></button><button id="add-top" class="primary">＋ 새로 만들기</button></div></header>
+      <header><span>워크스페이스 <i>/</i> <b id="breadcrumb">오늘</b></span><div><span id="connection" class="connection" role="status">연결 중</span><button type="button" id="chat-background-toggle" class="chat-background-toggle" aria-pressed="false">PC 채팅 알림 켜기</button><button type="button" id="theme-toggle" class="theme-toggle" data-theme-toggle aria-label="야간 모드로 전환"></button><button type="button" id="reminder-toggle" class="reminder-toggle" aria-label="해야 할 일 알림" aria-expanded="false" aria-controls="reminder-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4"/></svg><span id="reminder-count" class="reminder-count" hidden></span></button><button id="add-top" class="primary">＋ 새로 만들기</button></div></header>
       <section id="reminder-panel" class="reminder-panel" aria-label="해야 할 일 알림" hidden></section>
       <main id="main"></main>
       <footer>함께하는 하루, 데이온 <span>함께하는 오늘을 더 가볍게.</span></footer>
@@ -34,7 +34,7 @@
       <div class="widget-subheading"><span id="widget-unread-label">모두의 대화</span><span>최근 100개</span></div>
       <div id="widget-messages" class="widget-messages" role="region" aria-label="최근 대화"></div>
       <form id="widget-chat-form"><textarea name="message" rows="1" required maxlength="2000" placeholder="메시지 입력…" aria-label="위젯 메시지"></textarea><button type="submit" class="primary" aria-label="위젯 메시지 보내기">↑</button></form>
-      <div class="widget-notification-setting"><button type="button" id="chat-desktop-toggle">브라우저 알림 켜기</button><small>켜면 보낸 사람과 대화 미리보기를 시스템 알림으로 표시합니다. Dayon이 열린 동안 동작합니다.</small></div>
+      <div class="widget-notification-setting"><button type="button" id="chat-desktop-toggle">브라우저 알림 켜기</button><button type="button" id="chat-notification-test">알림 테스트</button><small id="chat-notification-status" role="status">PC에서 다른 창을 보거나 최소화해도 보낸 사람과 메시지를 시스템 알림으로 표시합니다. Dayon 탭은 열어 두세요.</small></div>
     </section>
     <button type="button" id="chat-launcher" class="chat-launcher" aria-label="채팅 열기" aria-expanded="false" aria-controls="chat-widget"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11a8 8 0 0 1-8 8H8l-5 3 1-6a8 8 0 1 1 17-5Z M8 10h8 M8 14h5"/></svg><span>채팅</span><span id="chat-unread" class="chat-unread" hidden></span></button>
   </div>

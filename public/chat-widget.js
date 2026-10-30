@@ -5,6 +5,7 @@ export function createChatWidget({api,escape:esc,getUser,getState,getPage,refres
   const launcher=document.querySelector('#chat-launcher'),panel=document.querySelector('#chat-widget');
   const list=document.querySelector('#widget-messages'),form=document.querySelector('#widget-chat-form');
   const popup=document.querySelector('#chat-popup');
+  const baseTitle=document.title, icon=document.createElement('link');icon.rel='icon';document.head.append(icon);
   let open=false,account=null,lastSequence=null,readInFlight=0,sending=false,changingNotification=false,popupTimer;
   const ephemeralPrefs=new Map(),fallbackNotifications=new Set();
   const nearEnd=element=>!element || element.scrollHeight-element.scrollTop-element.clientHeight<65;
@@ -28,9 +29,18 @@ export function createChatWidget({api,escape:esc,getUser,getState,getPage,refres
       list.scrollTop=atEnd?list.scrollHeight:scroll;
     }
     const prefs=preferences(),permission=supported()?Notification.permission:'unsupported';
-    const toggle=document.querySelector('#chat-desktop-toggle');
-    toggle.disabled=!supported()||changingNotification;toggle.textContent=!supported()?'브라우저 알림 미지원':prefs.enabled&&permission==='granted'?'브라우저 알림 끄기':'브라우저 알림 켜기';
-    toggle.setAttribute('aria-pressed',String(prefs.enabled&&permission==='granted'));
+    document.title=unread?`(${unread>99?'99+':unread}) 새 메시지 · ${baseTitle}`:baseTitle;
+    icon.href='data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#0071e3"/><text x="7" y="24" font-size="24" font-family="sans-serif" fill="white">D</text>${unread?'<circle cx="25" cy="7" r="6" fill="#ef4444" stroke="white" stroke-width="2"/>':''}</svg>`);
+    for(const id of ['chat-desktop-toggle','chat-background-toggle']){
+      const toggle=document.getElementById(id);
+      toggle.disabled=!supported()||changingNotification;
+      toggle.textContent=!supported()?'PC 알림 미지원':permission==='denied'?'PC 알림 차단됨':prefs.enabled&&permission==='granted'?'PC 채팅 알림 켜짐':'PC 채팅 알림 켜기';
+      toggle.setAttribute('aria-pressed',String(prefs.enabled&&permission==='granted'));
+      toggle.title=prefs.enabled&&permission==='granted'?'클릭하면 PC 채팅 알림을 끕니다':'새 메시지를 PC 시스템 알림으로 받습니다';
+    }
+    document.getElementById('chat-notification-test').disabled=!prefs.enabled||permission!=='granted';
+    document.getElementById('chat-notification-status').textContent=permission==='denied'?'주소창의 사이트 설정에서 알림을 허용해 주세요.':prefs.enabled&&permission==='granted'?'PC 알림이 켜졌어요. 다른 창을 보거나 최소화해도 동작합니다. Dayon 탭은 열어 두세요. 알림이 안 보이면 PC의 알림·집중 모드 설정을 확인해 주세요.':'PC 채팅 알림을 켜고 브라우저에서 허용해 주세요. Dayon 탭을 완전히 닫은 상태의 알림은 지원하지 않습니다.';
+
   }
   function showPopup(messages){
     if(!messages.length)return;
@@ -53,6 +63,24 @@ export function createChatWidget({api,escape:esc,getUser,getState,getPage,refres
     if(open){onOpen();popup.hidden=true;render();list.scrollTop=list.scrollHeight;form.elements.message.focus({preventScroll:true});markRead();}
     else launcher.focus({preventScroll:true});
   }
+  async function deliverNotification(title,options,userId){
+    if(getUser()?.id!==userId || !preferences().enabled)return false;
+    if('serviceWorker'in navigator){
+      try{
+        const registered=await navigator.serviceWorker.register('/sw.js');
+        const ready=registered.active?registered:await navigator.serviceWorker.ready;
+        if(getUser()?.id!==userId || !preferences().enabled)return false;
+        await ready.showNotification(title,options);
+        if(getUser()?.id!==userId || !preferences().enabled)for(const notification of await ready.getNotifications({tag:options.tag}))notification.close();
+        return true;
+      }catch{/* Try the desktop Notification API if persistent delivery is unavailable. */}
+    }
+    if(getUser()?.id!==userId || !preferences().enabled)return false;
+    const notification=new Notification(title,options);fallbackNotifications.add(notification);
+    notification.onclose=()=>fallbackNotifications.delete(notification);
+    notification.onclick=()=>{window.focus();notification.close();if(getUser()?.id===userId)setOpen(true);};
+    return true;
+  }
   async function notifyDesktop(messages){
     const user=getUser();if(!user||!messages.length||!supported()||Notification.permission!=='granted')return;
     const userId=user.id;
@@ -61,19 +89,10 @@ export function createChatWidget({api,escape:esc,getUser,getState,getPage,refres
       const prefs=preferences(),fresh=messages.filter(m=>m.sequence>prefs.notified);
       if(!prefs.enabled||!fresh.length)return;
       const previous=prefs.notified,latest=fresh.at(-1);prefs.notified=latest.sequence;savePrefs(prefs,userId);
-      const options={body:latest.text.slice(0,120),tag:'dayon-chat-'+userId,data:{type:'chat',sequence:latest.sequence}};
+      const options={body:latest.text.slice(0,120),tag:'dayon-chat-'+userId,requireInteraction:true,silent:false,data:{type:'chat',userId,sequence:latest.sequence}};
       let delivered=false;
       try{
-        if('serviceWorker'in navigator){
-          const registered=await navigator.serviceWorker.register('/sw.js');const ready=registered.active?registered:await navigator.serviceWorker.ready;
-          if(getUser()?.id!==userId||!preferences().enabled)return;
-          await ready.showNotification(`${latest.name} · Dayon 채팅${fresh.length>1?' ('+fresh.length+'개)':''}`,options);delivered=true;
-          if(getUser()?.id!==userId||!preferences().enabled)for(const notification of await ready.getNotifications({tag:options.tag}))notification.close();
-        }else{
-          const notification=new Notification(`${latest.name} · Dayon 채팅`,options);delivered=true;fallbackNotifications.add(notification);
-          notification.onclose=()=>fallbackNotifications.delete(notification);
-          notification.onclick=()=>{window.focus();notification.close();if(getUser()?.id===userId)setOpen(true);};
-        }
+        delivered=await deliverNotification(`${latest.name} · Dayon 채팅${fresh.length>1?' ('+fresh.length+'개)':''}`,options,userId);
       }catch{/* App banners and unread counts remain available when OS delivery fails. */}
       finally{if(!delivered){let value=ephemeralPrefs.get('dayon-chat-notifications-'+userId)||prefs;try{value=JSON.parse(localStorage.getItem('dayon-chat-notifications-'+userId))||value;}catch{}value.notified=previous;savePrefs(value,userId);}}
     }
@@ -95,6 +114,7 @@ export function createChatWidget({api,escape:esc,getUser,getState,getPage,refres
     if('serviceWorker'in navigator){try{const registration=await navigator.serviceWorker.getRegistration('/sw.js');if(registration)for(const notification of await registration.getNotifications({tag:'dayon-chat-'+userId}))if((notification.data?.sequence||0)<=through)notification.close();}catch{}}
   }
   async function clear(){
+    document.title=baseTitle;icon.removeAttribute('href');
     open=false;account=null;lastSequence=null;readInFlight=0;clearTimeout(popupTimer);popup.hidden=true;popup.replaceChildren();panel.hidden=true;launcher.classList.remove('is-open');launcher.setAttribute('aria-expanded','false');form.reset();list.replaceChildren();list.dataset.signature='';document.querySelector('#chat-unread').hidden=true;
     for(const notification of fallbackNotifications)notification.close();fallbackNotifications.clear();
   }
@@ -111,16 +131,28 @@ export function createChatWidget({api,escape:esc,getUser,getState,getPage,refres
     finally{sending=false;form.querySelector('button').disabled=false;}
   });
   form.elements.message.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();form.requestSubmit();}});
-  document.querySelector('#chat-desktop-toggle').addEventListener('click',async()=>{
+  async function toggleDesktop(){
     if(!getUser()||!supported()||changingNotification)return;changingNotification=true;const userId=getUser().id,prefs=preferences(),button=document.querySelector('#chat-desktop-toggle');button.disabled=true;
     try{
       if(prefs.enabled){prefs.enabled=false;savePrefs(prefs);for(const notification of fallbackNotifications)notification.close();fallbackNotifications.clear();if('serviceWorker'in navigator){const reg=await navigator.serviceWorker.getRegistration('/sw.js');if(reg)for(const notification of await reg.getNotifications({tag:'dayon-chat-'+userId}))notification.close();}}
-      else{const permission=await Notification.requestPermission();if(getUser()?.id!==userId)return;if(permission==='granted'){prefs.enabled=true;prefs.notified=getState().chat?.latest||0;savePrefs(prefs);toast('새 채팅의 브라우저 알림을 켰어요.');}else toast('브라우저 사이트 설정에서 알림을 허용해 주세요. 앱 안의 새 메시지 알림은 계속 표시됩니다.');}
+      else{const permission=await Notification.requestPermission();if(getUser()?.id!==userId)return;if(permission==='granted'){
+        if('serviceWorker'in navigator){try{await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;}catch{/* Desktop notification fallback remains available. */}}
+        if(getUser()?.id!==userId)return;
+        prefs.enabled=true;prefs.notified=getState().chat?.latest||0;savePrefs(prefs);toast('PC 채팅 알림을 켰어요. 다른 창을 보고 있어도 새 메시지를 알려드려요.');}else toast('브라우저 사이트 설정에서 알림을 허용해 주세요. 앱 안의 새 메시지 알림은 계속 표시됩니다.');}
     }catch{toast('이 브라우저에서는 앱 안의 채팅 알림을 이용해 주세요.');}finally{changingNotification=false;button.disabled=false;render();}
+  }
+  for(const id of ['chat-desktop-toggle','chat-background-toggle'])document.getElementById(id).addEventListener('click',toggleDesktop);
+  document.getElementById('chat-notification-test').addEventListener('click',async()=>{
+    const user=getUser();if(!user||!supported()||Notification.permission!=='granted'||!preferences().enabled)return;
+    try{
+      const delivered=await deliverNotification('Dayon · PC 알림 테스트',{body:'새 메시지는 다른 창을 보거나 최소화한 동안에도 이곳에 표시됩니다.',tag:'dayon-chat-'+user.id,requireInteraction:true,silent:false,data:{type:'chat',userId:user.id}},user.id);
+      if(!delivered)return;
+      toast('테스트 알림을 보냈어요. 표시되지 않으면 PC 알림·집중 모드 설정을 확인해 주세요.');
+    }catch{toast('알림을 표시하지 못했어요. 브라우저와 PC의 알림 설정을 확인해 주세요.');}
   });
   document.addEventListener('visibilitychange',()=>{if(visible())markRead();});
   window.addEventListener('focus',()=>markRead());
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&open&&!document.querySelector('dialog[open]'))setOpen(false);});
-  navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='open-chat'&&getUser())setOpen(true);});
+  navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='open-chat'&&getUser()&&(!event.data.userId||event.data.userId===getUser().id))setOpen(true);});
   return {update,clear,open:()=>setOpen(true),close:()=>setOpen(false),refreshView(){render();markRead();},setConnection(text){document.querySelector('#widget-connection').textContent=text;}};
 }
