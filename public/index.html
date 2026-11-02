@@ -26,6 +26,19 @@
       <header><span>워크스페이스 <i>/</i> <b id="breadcrumb">오늘</b></span><div><span id="connection" class="connection" role="status">연결 중</span><button type="button" id="chat-background-toggle" class="chat-background-toggle" aria-pressed="false">PC 채팅 알림 켜기</button><button type="button" id="theme-toggle" class="theme-toggle" data-theme-toggle aria-label="야간 모드로 전환"></button><button type="button" id="reminder-toggle" class="reminder-toggle" aria-label="해야 할 일 알림" aria-expanded="false" aria-controls="reminder-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4"/></svg><span id="reminder-count" class="reminder-count" hidden></span></button><button id="add-top" class="primary">＋ 새로 만들기</button></div></header>
       <section id="reminder-panel" class="reminder-panel" aria-label="해야 할 일 알림" hidden></section>
       <main id="main"></main>
+      <section id="manual-document" class="manual-document" aria-label="매뉴얼 문서 편집" hidden>
+        <form id="manual-form">
+          <div class="manual-document-bar"><button type="button" id="manual-back">‹ 매뉴얼 목록</button><div><span id="manual-save-status" role="status">저장됨</span><button id="manual-save" type="submit" class="primary">저장</button></div></div>
+          <div class="manual-document-body">
+            <label class="sr-only" for="manual-title">문서 제목</label><input id="manual-title" class="manual-document-title" name="title" required maxlength="100" placeholder="제목 없음" autocomplete="off">
+            <div class="manual-document-meta"><label>분류<input name="category" required maxlength="40" value="일반" aria-label="매뉴얼 분류"></label><span id="manual-document-author"></span></div>
+            <p id="manual-error" class="form-error" role="alert"></p>
+            <div id="manual-editor" aria-label="매뉴얼 블록 편집기"></div>
+            <div class="manual-document-footer"><span>문단 왼쪽 ＋로 추가 · ⠿로 종류 변경 · Enter로 다음 문단 · Shift+Enter로 줄바꿈</span><button id="manual-delete" type="button" class="delete-link">매뉴얼 삭제</button></div>
+          </div>
+        </form>
+      </section>
+
       <footer>함께하는 하루, 데이온 <span>함께하는 오늘을 더 가볍게.</span></footer>
     </div>
     <div id="chat-popup" class="chat-popup" role="status" aria-live="polite" hidden></div>
@@ -56,12 +69,6 @@
       <button class="primary submit">저장하기</button>
     </form>
   </dialog>
-  <dialog id="manual-dialog"><form id="manual-form">
-    <div class="dialog-title"><h2 id="manual-heading">매뉴얼 작성</h2><button type="button" data-close-dialog="manual-dialog" aria-label="닫기">✕</button></div>
-    <label>제목<input name="title" required maxlength="100"></label><label>분류<input name="category" required maxlength="40" value="일반"></label>
-    <div id="manual-editor" aria-label="매뉴얼 블록 편집기"></div>
-    <p id="manual-error" class="form-error" role="alert"></p><button id="manual-save" type="submit" class="primary submit">매뉴얼 저장</button><button id="manual-delete" type="button" class="delete-link">매뉴얼 삭제</button>
-  </form></dialog>
   <dialog id="resource-dialog"><form id="resource-form">
     <div class="dialog-title"><h2>자료 올리기</h2><button type="button" data-close-dialog="resource-dialog" aria-label="닫기">✕</button></div>
     <label>제목<input name="title" required maxlength="100"></label><label>분류<input name="category" required maxlength="40" value="일반"></label>

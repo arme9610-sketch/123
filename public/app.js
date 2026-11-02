@@ -58,7 +58,7 @@ function signedOut(message = '') {
   $('#office-stock-dialog').close();
   $('#task-detail-dialog').close();
   $('#menu-order-dialog').close();
-  $('#manual-dialog').close();$('#resource-dialog').close();
+  resetManualDocument();$('#resource-dialog').close();
   $('#dialog').close(); $('#main').replaceChildren(); $('#workspace-screen').hidden = true;
   showAuth(inviteToken ? 'join' : 'login', message);
 }
@@ -331,6 +331,7 @@ async function saveItem(form) {
   } finally { button.disabled = stale; }
 }
 async function navigate(nextPage) {
+  if(manualOpen&&!closeManualDocument())return;
   page = menuPages.includes(nextPage) ? nextPage : '오늘'; render();
   if (page === '사용자') await refreshInvitations();
     if (collections[page]) await loadCollection(page);
@@ -384,6 +385,7 @@ document.addEventListener('click', event => {
 $('#add-top').onclick = () => ['매뉴얼','자료실'].includes(page)?openLibrary(page):openForm(page === '사무실 재고' ? 'office' : page === '택배 발송' ? 'shipment' : page === '수입' ? 'inbound' : 'task');
 $('#close').onclick = () => $('#dialog').close();
 $('#logout').onclick = async () => {
+  if(manualOpen&&!closeManualDocument())return;
   try { await api('/api/logout', { method: 'POST', body: {} }); signedOut(); }
   catch (error) { toast(error.message); }
 };
@@ -473,18 +475,33 @@ function messageMarkup(message) {
 function chatPage() {
  return heading('이야기가 이어지는 곳','대화와 지난 기록을 한곳에서 확인하세요.')+`<section class="panel chat"><div class="panel-head"><h2>모두의 대화</h2><span class="muted">${chatSearchActive?'전체 대화 기록 검색':'최근 대화 500개'}</span></div>${searchFields('채팅')}<div class="messages" ${chatSearchActive?'data-filtered-chat="true"':''}>${chatSearchActive?collectionBody('채팅',messageMarkup):(state.messages.map(messageMarkup).join('')||empty('첫 번째 이야기를 남겨보세요.'))}</div><form id="chat-form"><input name="message" required maxlength="2000" placeholder="메시지를 입력하세요" aria-label="메시지"><button class="primary">보내기 ↗</button></form></section>`;
 }
-let manualEditing=null;
-const manualEditor=createManualEditor(document.getElementById('manual-editor'));
+let manualEditing=null,manualOpen=false,manualSaving=false,manualSavedSnapshot='',manualReturnScroll=0;
+const manualEditor=createManualEditor(document.getElementById('manual-editor'),{onChange:updateManualStatus});
+function manualSnapshot(){const form=$('#manual-form');return JSON.stringify({title:form.elements.title.value,category:form.elements.category.value,blocks:manualEditor.snapshot()});}
+function manualDirty(){return manualOpen&&manualSnapshot()!==manualSavedSnapshot;}
+function updateManualStatus(){if(manualOpen)$('#manual-save-status').textContent=manualSaving?'저장 중…':manualDirty()?'저장하지 않은 변경사항':'저장됨';}
+$('#manual-form').addEventListener('input',updateManualStatus);
+window.addEventListener('beforeunload',event=>{if(manualDirty()||manualSaving){event.preventDefault();event.returnValue='';}});
+function resetManualDocument(){manualOpen=false;manualEditing=null;manualSavedSnapshot='';$('#manual-document').hidden=true;$('#main').hidden=false;$('#manual-form').reset();manualEditor.load('');}
+function closeManualDocument(){
+ if(manualSaving){toast('저장이 끝난 뒤 이동해 주세요.');return false;}
+ if(manualDirty()&&!confirm('저장하지 않은 변경사항이 있습니다. 저장하지 않고 나갈까요?'))return false;
+ resetManualDocument();window.scrollTo(0,manualReturnScroll);return true;
+}
 function openLibrary(kind,id=null) {
  if(kind==='자료실') {$('#resource-form').reset();$('#resource-error').textContent='';$('#resource-dialog').showModal();return;}
  const item=collectionData['매뉴얼']?.results?.find(i=>i.id===id),form=$('#manual-form');
- manualEditing=item||null;form.reset();$('#manual-error').textContent='';
- for(const field of ['title','category']) {form.elements[field].value=item?.[field]||(field==='category'?'일반':'');form.elements[field].readOnly=false;}
- manualEditor.load(item?.content||'');
- $('#manual-save').hidden=false;$('#manual-delete').hidden=!item;
- $('#manual-heading').textContent=item?'매뉴얼 상세':'새 매뉴얼 작성';$('#manual-dialog').showModal();
+ if(id&&!item){toast('매뉴얼을 다시 불러온 뒤 열어 주세요.');return;}
+ if(manualOpen&&!closeManualDocument())return;
+ manualReturnScroll=window.scrollY;manualEditing=item||null;form.reset();$('#manual-error').textContent='';
+ for(const field of ['title','category'])form.elements[field].value=item?.[field]||(field==='category'?'일반':'');
+ manualEditor.load(item?.content||'');manualOpen=true;manualSavedSnapshot=manualSnapshot();
+ $('#manual-delete').hidden=!item;$('#manual-document-author').textContent=item?`${item.editor} · ${dateLabel(item.updated_at)} 수정`:currentUser.name+' · 새 문서';
+ $('#main').hidden=true;$('#manual-document').hidden=false;manualEditor.layout();updateManualStatus();window.scrollTo(0,0);
+ if(!item)form.elements.title.focus();
 }
 async function collectionClick(button) {
+ if(button.id==='manual-back'){if(closeManualDocument())await loadCollection('매뉴얼');return;}
  if(button.dataset.more)await loadCollection(button.dataset.more,true);
  if(button.dataset.resetSearch){const kind=button.dataset.resetSearch;searches[kind]={};if(kind==='채팅')chatSearchActive=false;for(const input of ($('#collection-search')?.elements||[]))if(input.name)input.value='';render();if(kind!=='채팅')await loadCollection(kind);}
  if(button.dataset.libraryNew)openLibrary(button.dataset.libraryNew);
@@ -494,7 +511,8 @@ async function collectionClick(button) {
   await api('/api/resources/'+encodeURIComponent(button.dataset.resourceDelete),{method:'DELETE'});await loadCollection('자료실');toast('자료를 삭제했어요.');
  }
  if(button.id==='manual-delete'&&manualEditing&&confirm('이 매뉴얼을 삭제할까요?')){
-  await api('/api/manuals/'+encodeURIComponent(manualEditing.id),{method:'DELETE',body:{version:manualEditing.version}});$('#manual-dialog').close();await loadCollection('매뉴얼');toast('매뉴얼을 삭제했어요.');
+  if(manualSaving)return;
+  await api('/api/manuals/'+encodeURIComponent(manualEditing.id),{method:'DELETE',body:{version:manualEditing.version}});resetManualDocument();await loadCollection('매뉴얼');toast('매뉴얼을 삭제했어요.');
  }
 }
 async function collectionSubmit(form) {
@@ -503,17 +521,21 @@ async function collectionSubmit(form) {
   await loadCollection(kind);if(kind==='채팅'&&$('.messages'))$('.messages').scrollTop=0;return true;
  }
  if(!['manual-form','resource-form'].includes(form.id))return false;
- const button=form.querySelector('button[type=submit]'),error=form.id==='manual-form'?$('#manual-error'):$('#resource-error');button.disabled=true;error.textContent='';
+ const button=form.querySelector('button[type=submit]');if(button.disabled)return true;const error=form.id==='manual-form'?$('#manual-error'):$('#resource-error');button.disabled=true;error.textContent='';
  try{
   if(form.id==='manual-form'){
-   const body=Object.fromEntries(new FormData(form));body.content=manualEditor.serialize();if(manualEditing)body.version=manualEditing.version;
-   await api('/api/manuals'+(manualEditing?'/'+encodeURIComponent(manualEditing.id):''),{method:manualEditing?'PUT':'POST',body});$('#manual-dialog').close();await loadCollection('매뉴얼');
+   const body=Object.fromEntries(new FormData(form));body.title=body.title.trim();body.category=body.category.trim();body.content=manualEditor.serialize();if(manualEditing)body.version=manualEditing.version;
+   const savedSnapshot=manualSnapshot(),owner=currentUser.id;manualSaving=true;updateManualStatus();
+   const result=await api('/api/manuals'+(manualEditing?'/'+encodeURIComponent(manualEditing.id):''),{method:manualEditing?'PUT':'POST',body});
+   if(currentUser?.id!==owner)return true;
+   manualEditing={...manualEditing,...body,id:result.id,version:(body.version||0)+1};manualSavedSnapshot=savedSnapshot;
+   $('#manual-delete').hidden=false;$('#manual-document-author').textContent=currentUser.name+' · '+dateLabel(new Date().toISOString())+' 수정';await loadCollection('매뉴얼');
   }else{
    const file=form.elements.file.files[0];if(!file||file.size===0||file.size>5*1024*1024)throw new Error('내용이 있는 5MB 이하 파일을 선택해 주세요.');
    const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('파일을 읽지 못했습니다.'));reader.readAsDataURL(file);});
    await api('/api/resources',{method:'POST',body:{title:form.elements.title.value,category:form.elements.category.value,filename:file.name,data}});$('#resource-dialog').close();await loadCollection('자료실');
   }toast('저장했어요.');
- }catch(e){error.textContent=e.message;}finally{button.disabled=false;}
+ }catch(e){error.textContent=e.message;}finally{button.disabled=false;if(form.id==='manual-form'){manualSaving=false;updateManualStatus();}}
  return true;
 }
 
