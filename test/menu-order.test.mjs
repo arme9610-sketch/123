@@ -23,3 +23,7 @@ test('movement preserves all menus and ignores moves beyond either edge', () => 
 test('renaming inbound inventory to imports preserves the user menu position',()=>{
  const order=normalizeMenuOrder(['채팅','입고 · 재고','업무']);assert.deepEqual(order.slice(0,3),['채팅','수입','업무']);assert.equal(order.filter(name=>name==='수입').length,1);assert.ok(order.includes('사무실 재고'));
 });
+
+test('renaming manuals to documents preserves saved menu position and the existing task menu',()=>{
+ const order=normalizeMenuOrder(['매뉴얼','업무','채팅']);assert.deepEqual(order.slice(0,3),['문서','업무','채팅']);assert.ok(!order.includes('매뉴얼'));assert.equal(order.filter(name=>name==='문서').length,1);
+});

@@ -51,6 +51,15 @@ for(const engine of engines){
   const next=(await f.request('/api/messages/search?offset=50',{user:f.member})).data;assert.equal(next.results.length,50);assert.ok(!next.results.some(m=>first.results.some(n=>m.id===n.id)));
   assert.equal((await f.request('/api/messages/search')).status,401);
  });
+ test(engine+': document groups preserve legacy manuals and support moving documents between groups',async t=>{
+  const f=await fixture(t,engine);
+  for(const category of ['업무절차','매뉴얼','기타'])assert.equal((await f.request('/api/manuals',{method:'POST',user:f.member,body:{title:'문서 '+category,category,content:'검색 공통 내용'}})).status,201);
+  const manuals=await f.request('/api/manuals?group=manual&q='+encodeURIComponent('검색'),{user:f.member});assert.equal(manuals.data.results.length,2);assert.ok(manuals.data.results.some(d=>d.category==='업무절차'));
+  const others=await f.request('/api/manuals?group=other',{user:f.member});assert.equal(others.data.results.length,1);
+  const doc=others.data.results[0];assert.equal((await f.request('/api/manuals/'+doc.id,{method:'PUT',user:f.member,body:{...doc,category:'매뉴얼'}})).status,200);
+  await f.restart();assert.equal((await f.request('/api/manuals?group=manual',{user:f.member})).data.results.length,3);assert.equal((await f.request('/api/manuals?group=other',{user:f.member})).data.results.length,0);
+  assert.equal((await f.request('/api/manuals?group=invalid',{user:f.member})).status,422);
+ });
  test(engine+': structured manuals persist after restart and remain searchable',async t=>{
   const f=await fixture(t,engine),blocks=[{type:'h1',text:'포장 안내'},{type:'toggle',text:'주의사항',children:[{type:'text',text:'완충재 3겹'},{type:'toggle',text:'접수 안내',children:[{type:'text',text:'포장 확인'}]}]},{type:'table',text:'',rows:[['상품','수량'],['캐리어','2']]}];
   const content=serializeManual(blocks);

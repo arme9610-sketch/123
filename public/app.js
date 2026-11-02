@@ -54,7 +54,7 @@ function signedOut(message = '') {
   eventStream?.close(); eventStream = null;chatWidget.clear();
   closeDesktopNotifications();toggleReminders(false);$('#reminder-panel').replaceChildren();$('#reminder-count').hidden=true;
   currentUser = null; csrfToken = ''; state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
-  invitations = []; inviteResult = null; page = '오늘';searches={};collectionData={};chatSearchActive=false;collectionRequest++;
+  invitations = []; inviteResult = null; page = '오늘';searches={};collectionData={};chatSearchActive=false;collectionRequest++;manualGroup='manual';
   $('#office-stock-dialog').close();
   $('#task-detail-dialog').close();
   $('#menu-order-dialog').close();
@@ -137,7 +137,7 @@ const iconPaths={
  '택배 발송':'M3 6h11v12H3Z M14 10h4l3 4v4h-7 M6 18a2 2 0 1 0 4 0 M15 18a2 2 0 1 0 4 0',
  '채팅':'M21 11a8 8 0 0 1-8 8H8l-5 3 1-6a8 8 0 1 1 17-5Z M8 10h8 M8 14h5',
  '아카이브':'M3 4h18v5H3Z M5 9v12h14V9 M9 13h6',
- '매뉴얼':'M12 5C8 2 4 3 2 4v16c4-2 7-1 10 1 3-2 6-3 10-1V4c-2-1-6-2-10 1Z M12 5v16',
+ '문서':'M12 5C8 2 4 3 2 4v16c4-2 7-1 10 1 3-2 6-3 10-1V4c-2-1-6-2-10 1Z M12 5v16',
  '자료실':'M3 7h7l2-3h9v17H3Z M3 7v-3h7',
  '사용자':'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4 21v-2a8 8 0 0 1 16 0v2'
 };
@@ -223,7 +223,7 @@ if(page==='오늘'){html=heading(`좋은 하루예요, ${esc(currentUser.name)}�
 }else if(page==='업무'){const items=state.items.filter(i=>['task','shipment','office'].includes(i.type)&&(taskTab!=='내 업무'||i.ownerId===currentUser.id)).sort((a,b)=>Number(a.done)-Number(b.done)||Number(b.priority==='urgent')-Number(a.priority==='urgent')||(a.dueDate||a.date).localeCompare(b.dueDate||b.date));html=heading('업무를 함께, 차근차근','담당자와 마감일을 정하고 진행 상황을 공유하세요.',`<button class="primary" data-new="task">＋ 업무 요청</button>`)+`<div class="tabs">${['전체 업무','내 업무','부탁한 업무'].map(t=>`<button data-tab="${t}" class="${taskTab===t?'selected':''}">${t}</button>`).join('')}</div><section class="panel">${(taskTab==='부탁한 업무'?items.filter(i=>i.requesterId===currentUser.id):items).map(row).join('')||empty('아직 등록된 업무가 없어요.')}</section>` + recurringList();
  }else if(page==='사무실 재고'){html=officeUI.render();}else if(page==='수입'){
 html=heading('수입','인천 ETA와 창고 입고 일정을 확인하세요.',`<button class="primary" data-new="inbound">＋ 수입 일정 등록</button>`)+`<section class="panel">${importTable(state.items.filter(i=>i.type==='inbound'))}</section>`;
-}else if(page==='사용자'){html=teamSettings();}else if(page==='아카이브'){html=archivePage();}else if(['매뉴얼','자료실'].includes(page)){html=libraryPage(page);}else{html=chatPage();}
+}else if(page==='사용자'){html=teamSettings();}else if(page==='아카이브'){html=archivePage();}else if(['문서','자료실'].includes(page)){html=libraryPage(page);}else{html=chatPage();}
 $('#main').innerHTML=html;restoreDraft(preserved);chatWidget.refreshView();
 }
 function empty(t){return `<div class="empty">${t}</div>`}
@@ -381,7 +381,7 @@ document.addEventListener('click', event => {
   if (button) handleClick(button).catch(error => toast(error.message));
   else { const row=event.target.closest('[data-open-task]'); if(row && currentUser)taskDetails.open(row.dataset.openTask); }
 });
-$('#add-top').onclick = () => ['매뉴얼','자료실'].includes(page)?openLibrary(page):openForm(page === '사무실 재고' ? 'office' : page === '수입' ? 'inbound' : 'task');
+$('#add-top').onclick = () => ['문서','자료실'].includes(page)?openLibrary(page):openForm(page === '사무실 재고' ? 'office' : page === '수입' ? 'inbound' : 'task');
 $('#close').onclick = () => $('#dialog').close();
 $('#logout').onclick = async () => {
   if(manualOpen&&!closeManualDocument())return;
@@ -436,7 +436,8 @@ async function initialize() {
   }
 }
 // Shared archive, manual, resource and complete chat-history search.
-const collections = {'아카이브':'archive','매뉴얼':'manuals','자료실':'resources','채팅':'messages/search'};
+const collections = {'아카이브':'archive','문서':'manuals','자료실':'resources','채팅':'messages/search'};
+let manualGroup='manual';
 let searches = {}, collectionData = {}, collectionRequest = 0, chatSearchActive = false;
 const dateLabel = value => value ? new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '완료일 미기록';
 function searchFields(kind) {
@@ -446,6 +447,7 @@ function searchFields(kind) {
 async function loadCollection(kind=page, append=false) {
  if(!collections[kind] || (kind==='채팅'&&!chatSearchActive))return;
  const request=++collectionRequest,user=currentUser?.id,params={...(searches[kind]||{})};
+ if(kind==='문서')params.group=manualGroup;
  const old=collectionData[kind];params.offset=append?(old?.results.length||0):0;
  collectionData[kind]={...old,loading:true,error:''};if(page===kind)render();
  try{
@@ -465,8 +467,9 @@ function archivePage() {
  return heading('완료한 일도, 언제든 다시','완료된 업무·입고·발송·일정을 찾아보고 필요한 내용을 확인하세요.')+`<section class="panel">${searchFields('아카이브')}<div class="collection-note">날짜는 업무 예정일 기준입니다. 완료를 취소하면 아카이브에서 빠지고 입고 재고에도 반영됩니다.</div>${collectionBody('아카이브',i=>`<div class="archive-entry">${row(i)}<small>예정일 ${esc(i.date)} · 완료 ${esc(dateLabel(i.completedAt))}</small></div>`)}</section>`;
 }
 function libraryPage(kind) {
- const manual=kind==='매뉴얼';
- return heading(manual?'업무 매뉴얼':'함께 사용하는 자료실',manual?'업무 절차와 기준을 정리하고 함께 확인하세요.':'양식과 문서를 올리고 필요한 파일을 내려받으세요.',`<button class="primary" data-library-new="${kind}">＋ ${manual?'매뉴얼 작성':'파일 올리기'}</button>`)+`<section class="panel">${searchFields(kind)}${manual?'':`<div class="collection-note">파일당 5MB · 자료실 전체 25MB · 현재 ${((collectionData[kind]?.usedBytes||0)/1024/1024).toFixed(1)}MB 사용</div>`}${collectionBody(kind,i=>manual?`<button class="library-card" data-manual="${esc(i.id)}"><span class="badge green">${esc(i.category)}</span><h2>${esc(i.title)}</h2><p>${esc(manualText(i.content).slice(0,130))}</p><small>${esc(i.editor)} · ${esc(dateLabel(i.updated_at))}</small><span class="card-arrow">↗</span></button>`:`<div class="resource-entry"><div><span class="badge blue">${esc(i.category)}</span><b>${esc(i.title)}</b><small>${esc(i.filename)} · ${(i.size/1024).toFixed(1)}KB · ${esc(i.author)} · ${esc(dateLabel(i.created_at))}</small></div><a class="download" href="/api/resources/${encodeURIComponent(i.id)}/download">다운로드 ↓</a><button class="delete-link" data-resource-delete="${esc(i.id)}">삭제</button></div>`)}</section>`;
+ const manual=kind==='문서';
+ const groupTabs=(manual?`<div class="tabs manual-group-tabs" role="group" aria-label="문서 구분">${[['manual','매뉴얼'],['other','기타']].map(([group,label])=>`<button type="button" data-manual-group="${group}" class="${manualGroup===group?'selected':''}" aria-pressed="${manualGroup===group}">${label}</button>`).join('')}</div>`:'');
+ return heading(manual?'문서':'함께 사용하는 자료실',manual?'업무 절차와 기준을 정리하고 함께 확인하세요.':'양식과 문서를 올리고 필요한 파일을 내려받으세요.',`<button class="primary" data-library-new="${kind}">＋ ${manual?(manualGroup==='other'?'기타 문서 작성':'매뉴얼 작성'):'파일 올리기'}</button>`)+groupTabs+`<section class="panel">${searchFields(kind)}${manual?'':`<div class="collection-note">파일당 5MB · 자료실 전체 25MB · 현재 ${((collectionData[kind]?.usedBytes||0)/1024/1024).toFixed(1)}MB 사용</div>`}${collectionBody(kind,i=>manual?`<button class="library-card" data-manual="${esc(i.id)}"><span class="badge green">${esc(i.category)}</span><h2>${esc(i.title)}</h2><p>${esc(manualText(i.content).slice(0,130))}</p><small>${esc(i.editor)} · ${esc(dateLabel(i.updated_at))}</small><span class="card-arrow">↗</span></button>`:`<div class="resource-entry"><div><span class="badge blue">${esc(i.category)}</span><b>${esc(i.title)}</b><small>${esc(i.filename)} · ${(i.size/1024).toFixed(1)}KB · ${esc(i.author)} · ${esc(dateLabel(i.created_at))}</small></div><a class="download" href="/api/resources/${encodeURIComponent(i.id)}/download">다운로드 ↓</a><button class="delete-link" data-resource-delete="${esc(i.id)}">삭제</button></div>`)}</section>`;
 }
 function messageMarkup(message) {
  return `<div class="message"><span class="avatar">${esc(message.name[0])}</span><div><small>${esc(message.name)} · ${esc(dateLabel(message.createdAt))}</small><p>${esc(message.text)}</p></div></div>`;
@@ -489,29 +492,32 @@ function closeManualDocument(){
 }
 function openLibrary(kind,id=null) {
  if(kind==='자료실') {$('#resource-form').reset();$('#resource-error').textContent='';$('#resource-dialog').showModal();return;}
- const item=collectionData['매뉴얼']?.results?.find(i=>i.id===id),form=$('#manual-form');
- if(id&&!item){toast('매뉴얼을 다시 불러온 뒤 열어 주세요.');return;}
+ const item=collectionData['문서']?.results?.find(i=>i.id===id),form=$('#manual-form');
+ if(id&&!item){toast('문서를 다시 불러온 뒤 열어 주세요.');return;}
  if(manualOpen&&!closeManualDocument())return;
  manualReturnScroll=window.scrollY;manualEditing=item||null;form.reset();$('#manual-error').textContent='';
- for(const field of ['title','category'])form.elements[field].value=item?.[field]||(field==='category'?'일반':'');
+ form.elements.title.value=item?.title||'';
+ const oldCategory=item?.category,manualCategory=oldCategory&&oldCategory!=='기타'?oldCategory:'매뉴얼';
+ form.elements.category.innerHTML=`<option value="${esc(manualCategory)}">매뉴얼</option><option value="기타">기타</option>`;form.elements.category.value=oldCategory||(manualGroup==='other'?'기타':manualCategory);
  manualEditor.load(item?.content||'');manualOpen=true;manualSavedSnapshot=manualSnapshot();
  $('#manual-delete').hidden=!item;$('#manual-document-author').textContent=item?`${item.editor} · ${dateLabel(item.updated_at)} 수정`:currentUser.name+' · 새 문서';
  $('#main').hidden=true;$('#manual-document').hidden=false;manualEditor.layout();updateManualStatus();window.scrollTo(0,0);
  if(!item)form.elements.title.focus();
 }
 async function collectionClick(button) {
- if(button.id==='manual-back'){if(closeManualDocument())await loadCollection('매뉴얼');return;}
+ if(button.dataset.manualGroup){manualGroup=button.dataset.manualGroup;collectionData['문서']=undefined;await loadCollection('문서');return;}
+ if(button.id==='manual-back'){if(closeManualDocument())await loadCollection('문서');return;}
  if(button.dataset.more)await loadCollection(button.dataset.more,true);
  if(button.dataset.resetSearch){const kind=button.dataset.resetSearch;searches[kind]={};if(kind==='채팅')chatSearchActive=false;for(const input of ($('#collection-search')?.elements||[]))if(input.name)input.value='';render();if(kind!=='채팅')await loadCollection(kind);}
  if(button.dataset.libraryNew)openLibrary(button.dataset.libraryNew);
- if(button.dataset.manual)openLibrary('매뉴얼',button.dataset.manual);
+ if(button.dataset.manual)openLibrary('문서',button.dataset.manual);
  if(button.dataset.closeDialog)document.getElementById(button.dataset.closeDialog).close();
  if(button.dataset.resourceDelete&&confirm('이 자료를 삭제할까요? 삭제한 파일은 복구할 수 없습니다.')){
   await api('/api/resources/'+encodeURIComponent(button.dataset.resourceDelete),{method:'DELETE'});await loadCollection('자료실');toast('자료를 삭제했어요.');
  }
- if(button.id==='manual-delete'&&manualEditing&&confirm('이 매뉴얼을 삭제할까요?')){
+ if(button.id==='manual-delete'&&manualEditing&&confirm('이 문서를 삭제할까요?')){
   if(manualSaving)return;
-  await api('/api/manuals/'+encodeURIComponent(manualEditing.id),{method:'DELETE',body:{version:manualEditing.version}});resetManualDocument();await loadCollection('매뉴얼');toast('매뉴얼을 삭제했어요.');
+  await api('/api/manuals/'+encodeURIComponent(manualEditing.id),{method:'DELETE',body:{version:manualEditing.version}});resetManualDocument();await loadCollection('문서');toast('문서를 삭제했어요.');
  }
 }
 async function collectionSubmit(form) {
@@ -527,8 +533,8 @@ async function collectionSubmit(form) {
    const savedSnapshot=manualSnapshot(),owner=currentUser.id;manualSaving=true;updateManualStatus();
    const result=await api('/api/manuals'+(manualEditing?'/'+encodeURIComponent(manualEditing.id):''),{method:manualEditing?'PUT':'POST',body});
    if(currentUser?.id!==owner)return true;
-   manualEditing={...manualEditing,...body,id:result.id,version:(body.version||0)+1};manualSavedSnapshot=savedSnapshot;
-   $('#manual-delete').hidden=false;$('#manual-document-author').textContent=currentUser.name+' · '+dateLabel(new Date().toISOString())+' 수정';await loadCollection('매뉴얼');
+   manualEditing={...manualEditing,...body,id:result.id,version:(body.version||0)+1};manualSavedSnapshot=savedSnapshot;manualGroup=body.category==='기타'?'other':'manual';
+   $('#manual-delete').hidden=false;$('#manual-document-author').textContent=currentUser.name+' · '+dateLabel(new Date().toISOString())+' 수정';await loadCollection('문서');
   }else{
    const file=form.elements.file.files[0];if(!file||file.size===0||file.size>5*1024*1024)throw new Error('내용이 있는 5MB 이하 파일을 선택해 주세요.');
    const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('파일을 읽지 못했습니다.'));reader.readAsDataURL(file);});

@@ -1,7 +1,7 @@
-export const menuPages = Object.freeze(['오늘', '업무', '공용 달력', '수입', '사무실 재고', '채팅', '아카이브', '매뉴얼', '자료실', '사용자']);
+export const menuPages = Object.freeze(['오늘', '업무', '공용 달력', '수입', '사무실 재고', '채팅', '아카이브', '문서', '자료실', '사용자']);
 
 export function normalizeMenuOrder(saved) {
-  const known = Array.isArray(saved) ? saved.map(name=>name==='입고 · 재고'?'수입':name).filter(name => menuPages.includes(name)) : [];
+  const known = Array.isArray(saved) ? saved.map(name=>name==='매뉴얼'?'문서':name==='입고 · 재고'?'수입':name).filter(name => menuPages.includes(name)) : [];
   return [...new Set([...known, ...menuPages])];
 }
 

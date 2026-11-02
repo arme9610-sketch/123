@@ -141,3 +141,5 @@ dialog{width:490px;max-width:calc(100vw - 32px);max-height:90dvh;overflow-y:auto
 .manual-block>.manual-toggle-body{margin-left:48px;padding-left:0;border-left:1px solid var(--line)}.manual-block>.manual-toggle-body>.manual-block{margin-left:10px}.manual-block>.manual-toggle-body>.manual-add-paragraph{padding-left:10px}.manual-block:has(.manual-block:hover)>.manual-block-gutter{opacity:0}.manual-block:has(>.manual-block-menu)>.manual-block-gutter{opacity:1}
 
 @media(hover:none){.manual-block>.manual-block-gutter,.manual-block:has(.manual-block:hover)>.manual-block-gutter{opacity:1}}
+
+.manual-document-meta select{width:160px;padding:8px 12px;font-size:12px;background:var(--surface-muted);border-color:transparent}.manual-group-tabs{margin-bottom:25px}@media(max-width:700px){.manual-document-meta select{width:120px}}
