@@ -1,3 +1,4 @@
+import {createManualEditor,manualText} from './manual-editor.js';
 import {officeCatalog,officeOperations} from './office-catalog.js';
 import {createOfficeStock} from './office-stock.js';
 import {deadlineStatus} from './task-priority.js';
@@ -467,7 +468,7 @@ function archivePage() {
 }
 function libraryPage(kind) {
  const manual=kind==='매뉴얼';
- return heading(manual?'업무 매뉴얼':'함께 사용하는 자료실',manual?'업무 절차와 기준을 정리하고 함께 확인하세요.':'양식과 문서를 올리고 필요한 파일을 내려받으세요.',`<button class="primary" data-library-new="${kind}">＋ ${manual?'매뉴얼 작성':'파일 올리기'}</button>`)+`<section class="panel">${searchFields(kind)}${manual?'':`<div class="collection-note">파일당 5MB · 자료실 전체 25MB · 현재 ${((collectionData[kind]?.usedBytes||0)/1024/1024).toFixed(1)}MB 사용</div>`}${collectionBody(kind,i=>manual?`<button class="library-card" data-manual="${esc(i.id)}"><span class="badge green">${esc(i.category)}</span><h2>${esc(i.title)}</h2><p>${esc(i.content.slice(0,130))}</p><small>${esc(i.editor)} · ${esc(dateLabel(i.updated_at))}</small><span class="card-arrow">↗</span></button>`:`<div class="resource-entry"><div><span class="badge blue">${esc(i.category)}</span><b>${esc(i.title)}</b><small>${esc(i.filename)} · ${(i.size/1024).toFixed(1)}KB · ${esc(i.author)} · ${esc(dateLabel(i.created_at))}</small></div><a class="download" href="/api/resources/${encodeURIComponent(i.id)}/download">다운로드 ↓</a><button class="delete-link" data-resource-delete="${esc(i.id)}">삭제</button></div>`)}</section>`;
+ return heading(manual?'업무 매뉴얼':'함께 사용하는 자료실',manual?'업무 절차와 기준을 정리하고 함께 확인하세요.':'양식과 문서를 올리고 필요한 파일을 내려받으세요.',`<button class="primary" data-library-new="${kind}">＋ ${manual?'매뉴얼 작성':'파일 올리기'}</button>`)+`<section class="panel">${searchFields(kind)}${manual?'':`<div class="collection-note">파일당 5MB · 자료실 전체 25MB · 현재 ${((collectionData[kind]?.usedBytes||0)/1024/1024).toFixed(1)}MB 사용</div>`}${collectionBody(kind,i=>manual?`<button class="library-card" data-manual="${esc(i.id)}"><span class="badge green">${esc(i.category)}</span><h2>${esc(i.title)}</h2><p>${esc(manualText(i.content).slice(0,130))}</p><small>${esc(i.editor)} · ${esc(dateLabel(i.updated_at))}</small><span class="card-arrow">↗</span></button>`:`<div class="resource-entry"><div><span class="badge blue">${esc(i.category)}</span><b>${esc(i.title)}</b><small>${esc(i.filename)} · ${(i.size/1024).toFixed(1)}KB · ${esc(i.author)} · ${esc(dateLabel(i.created_at))}</small></div><a class="download" href="/api/resources/${encodeURIComponent(i.id)}/download">다운로드 ↓</a><button class="delete-link" data-resource-delete="${esc(i.id)}">삭제</button></div>`)}</section>`;
 }
 function messageMarkup(message) {
  return `<div class="message"><span class="avatar">${esc(message.name[0])}</span><div><small>${esc(message.name)} · ${esc(dateLabel(message.createdAt))}</small><p>${esc(message.text)}</p></div></div>`;
@@ -476,11 +477,13 @@ function chatPage() {
  return heading('이야기가 이어지는 곳','대화와 지난 기록을 한곳에서 확인하세요.')+`<section class="panel chat"><div class="panel-head"><h2>모두의 대화</h2><span class="muted">${chatSearchActive?'전체 대화 기록 검색':'최근 대화 500개'}</span></div>${searchFields('채팅')}<div class="messages" ${chatSearchActive?'data-filtered-chat="true"':''}>${chatSearchActive?collectionBody('채팅',messageMarkup):(state.messages.map(messageMarkup).join('')||empty('첫 번째 이야기를 남겨보세요.'))}</div><form id="chat-form"><input name="message" required maxlength="2000" placeholder="메시지를 입력하세요" aria-label="메시지"><button class="primary">보내기 ↗</button></form></section>`;
 }
 let manualEditing=null;
+const manualEditor=createManualEditor(document.getElementById('manual-editor'));
 function openLibrary(kind,id=null) {
  if(kind==='자료실') {$('#resource-form').reset();$('#resource-error').textContent='';$('#resource-dialog').showModal();return;}
  const item=collectionData['매뉴얼']?.results?.find(i=>i.id===id),form=$('#manual-form');
  manualEditing=item||null;form.reset();$('#manual-error').textContent='';
- for(const field of ['title','category','content']) {form.elements[field].value=item?.[field]||(field==='category'?'일반':'');form.elements[field].readOnly=false;}
+ for(const field of ['title','category']) {form.elements[field].value=item?.[field]||(field==='category'?'일반':'');form.elements[field].readOnly=false;}
+ manualEditor.load(item?.content||'');
  $('#manual-save').hidden=false;$('#manual-delete').hidden=!item;
  $('#manual-heading').textContent=item?'매뉴얼 상세':'새 매뉴얼 작성';$('#manual-dialog').showModal();
 }
@@ -506,7 +509,7 @@ async function collectionSubmit(form) {
  const button=form.querySelector('button[type=submit]'),error=form.id==='manual-form'?$('#manual-error'):$('#resource-error');button.disabled=true;error.textContent='';
  try{
   if(form.id==='manual-form'){
-   const body=Object.fromEntries(new FormData(form));if(manualEditing)body.version=manualEditing.version;
+   const body=Object.fromEntries(new FormData(form));body.content=manualEditor.serialize();if(manualEditing)body.version=manualEditing.version;
    await api('/api/manuals'+(manualEditing?'/'+encodeURIComponent(manualEditing.id):''),{method:manualEditing?'PUT':'POST',body});$('#manual-dialog').close();await loadCollection('매뉴얼');
   }else{
    const file=form.elements.file.files[0];if(!file||file.size===0||file.size>5*1024*1024)throw new Error('내용이 있는 5MB 이하 파일을 선택해 주세요.');

@@ -1,3 +1,4 @@
+import {serializeManual,parseManual} from '../public/manual-editor.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -49,6 +50,13 @@ for(const engine of engines){
   const first=(await f.request('/api/messages/search',{user:f.member})).data;assert.equal(first.results.length,50);assert.equal(first.hasMore,true);
   const next=(await f.request('/api/messages/search?offset=50',{user:f.member})).data;assert.equal(next.results.length,50);assert.ok(!next.results.some(m=>first.results.some(n=>m.id===n.id)));
   assert.equal((await f.request('/api/messages/search')).status,401);
+ });
+ test(engine+': structured manuals persist after restart and remain searchable',async t=>{
+  const f=await fixture(t,engine),blocks=[{type:'h1',text:'포장 안내'},{type:'toggle',text:'주의사항',body:'완충재 3겹'},{type:'table',text:'',rows:[['상품','수량'],['캐리어','2']]}];
+  const content=serializeManual(blocks);
+  assert.equal((await f.request('/api/manuals',{method:'POST',user:f.member,body:{title:'블록 매뉴얼',category:'업무',content}})).status,201);
+  await f.restart();
+  for(const query of ['완충재','캐리어']){const list=await f.request('/api/manuals?q='+encodeURIComponent(query),{user:f.member});assert.equal(list.data.results.length,1);assert.deepEqual(parseManual(list.data.results[0].content),blocks);}
  });
  test(engine+': all employees can write and edit manuals with stale edit protection',async t=>{
   const f=await fixture(t,engine),body={title:'포장 매뉴얼',category:'발송',content:'유리 제품은 완충재 2겹'};
