@@ -5,7 +5,6 @@ import {deadlineStatus} from './task-priority.js';
 import {createTaskDetails} from './task-details.js';
 import {enableMenuDrag} from './menu-drag.js';
 import {menuPages, normalizeMenuOrder, moveMenu} from './menu-order.js';
-import {dailyFortune} from './fortune.js';
 import {createChatWidget} from './chat-widget.js';
 import { dueReminders, reminderKey, seoulDate } from './reminders.js';
 const $ = selector => document.querySelector(selector);
@@ -131,7 +130,6 @@ function connectEvents() {
   };
 }
 const iconPaths={
- '오늘의 운세':'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z M19 3v4 M17 5h4',
  '오늘':'M3 10 12 3l9 7v10H3Z M9 20v-7h6v7',
  '업무':'M8 5H5v16h14V5h-3 M8 3h8v5H8Z M8 13l2 2 5-5',
  '공용 달력':'M4 5h16v16H4Z M8 3v4 M16 3v4 M4 10h16',
@@ -333,7 +331,7 @@ async function saveItem(form) {
   } finally { button.disabled = stale; }
 }
 async function navigate(nextPage) {
-  page = nextPage; render();
+  page = menuPages.includes(nextPage) ? nextPage : '오늘'; render();
   if (page === '사용자') await refreshInvitations();
     if (collections[page]) await loadCollection(page);
 }
@@ -341,7 +339,6 @@ async function handleClick(button) {
   if (button.dataset.auth) { showAuth(button.dataset.auth); return; }
   if (!currentUser) return;
   if(menuOrderClick(button))return;
-  if(await fortuneClick(button))return;
   if(await reminderClick(button))return;
   await collectionClick(button);
   if (button.dataset.page) await navigate(button.dataset.page);
@@ -645,31 +642,6 @@ setInterval(()=>{
   checkBrowserReminders();
 },60000);
 window.addEventListener('storage',event=>{if(currentUser&&event.key==='dayon-reminders-'+currentUser.id)renderReminders();});
-
-const openedFortunes=new Set();
-function fortuneOpened() {
- const key=currentUser.id+':'+today;
- try{if(localStorage.getItem('dayon-fortune-opened-'+currentUser.id)===today)openedFortunes.add(key);}catch{}
- return openedFortunes.has(key);
-}
-function fortunePage() {
- const fortune=dailyFortune(currentUser.id),opened=fortuneOpened();
- const date=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'long'}).format(new Date());
- const cookie=`<svg class="fortune-cookie ${opened?'is-open':''}" viewBox="0 0 240 165" aria-hidden="true"><defs><linearGradient id="cookie-gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f3d291"/><stop offset="1" stop-color="#c78f45"/></linearGradient></defs><ellipse class="cookie-shadow" cx="120" cy="146" rx="72" ry="9"/><g class="cookie-left"><path d="M120 36C85 8 31 46 36 95c3 35 44 50 84 36L96 91Z" fill="url(#cookie-gold)"/><path d="M120 36 96 91l24 40c-29-13-48-35-51-58" fill="#d6a157"/><path d="M47 79c5-21 19-35 38-39" fill="none" stroke="#ffe8ba" stroke-width="4" stroke-linecap="round"/></g><g class="cookie-right"><path d="M120 36c35-28 89 10 84 59-3 35-44 50-84 36l24-40Z" fill="url(#cookie-gold)"/><path d="m120 36 24 55-24 40c29-13 48-35 51-58" fill="#e8bb78"/><path d="M186 63c7 9 10 19 10 28" fill="none" stroke="#ffe8ba" stroke-width="3" stroke-linecap="round"/></g><path class="cookie-spark" d="m207 24 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z" fill="#d7ac67"/><circle cx="30" cy="40" r="3" fill="#e4cda7"/></svg>`;
- return heading('오늘의 운세','가볍게 펼쳐보는, 오늘을 위한 한마디.')+`<section class="fortune-panel"><p class="fortune-date">${esc(date)}</p><p class="eyebrow">A LITTLE FORTUNE FOR YOUR DAY</p>${cookie}<div class="fortune-content" id="fortune-message" tabindex="-1">${opened?`<span class="fortune-topic">${esc(fortune.theme)}</span><h2>${esc(currentUser.name)}님, 오늘은 이런 마음으로.</h2><blockquote>${esc(fortune.message)}</blockquote><div class="fortune-practice"><small>오늘의 작은 실천</small><p>${esc(fortune.practice)}</p></div><button type="button" class="fortune-copy" data-fortune-copy>오늘의 메시지 복사 ↗</button>`:`<h2>${esc(currentUser.name)}님을 위한 포춘쿠키</h2><p class="fortune-invitation">작은 응원이 담겨 있어요.<br>쿠키를 열어 오늘의 메시지를 만나보세요.</p><button type="button" class="primary" data-fortune-open>포춘쿠키 열기</button>`}</div><p class="fortune-reset">하루에 한 메시지 · 한국 시간 자정에 새로운 응원이 찾아와요.</p></section>`;
-}
-async function fortuneClick(button) {
- if(button.hasAttribute('data-fortune-open')){
-  today=seoulDate();openedFortunes.add(currentUser.id+':'+today);
-  try{localStorage.setItem('dayon-fortune-opened-'+currentUser.id,today);}catch{}
-  render();document.querySelector('.fortune-cookie')?.classList.add('is-cracking');$('#fortune-message')?.focus({preventScroll:true});return true;
- }
- if(button.hasAttribute('data-fortune-copy')){
-  const fortune=dailyFortune(currentUser.id);
-  try{await navigator.clipboard.writeText(fortune.message);toast('오늘의 응원 메시지를 복사했어요.');}catch{toast('복사할 수 없어요. 메시지를 직접 선택해 복사해 주세요.');}return true;
- }
- return false;
-}
 
 const chatWidget=createChatWidget({api,escape:esc,getUser:()=>currentUser,getState:()=>state,getPage:()=>page,refresh:refreshState,openFullChat:()=>navigate('채팅'),onOpen:()=>toggleReminders(false),toast});
 initialize();
