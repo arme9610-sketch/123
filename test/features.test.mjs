@@ -52,7 +52,7 @@ for(const engine of engines){
   assert.equal((await f.request('/api/messages/search')).status,401);
  });
  test(engine+': structured manuals persist after restart and remain searchable',async t=>{
-  const f=await fixture(t,engine),blocks=[{type:'h1',text:'포장 안내'},{type:'toggle',text:'주의사항',body:'완충재 3겹'},{type:'table',text:'',rows:[['상품','수량'],['캐리어','2']]}];
+  const f=await fixture(t,engine),blocks=[{type:'h1',text:'포장 안내'},{type:'toggle',text:'주의사항',children:[{type:'text',text:'완충재 3겹'},{type:'toggle',text:'접수 안내',children:[{type:'text',text:'포장 확인'}]}]},{type:'table',text:'',rows:[['상품','수량'],['캐리어','2']]}];
   const content=serializeManual(blocks);
   assert.equal((await f.request('/api/manuals',{method:'POST',user:f.member,body:{title:'블록 매뉴얼',category:'업무',content}})).status,201);
   await f.restart();
