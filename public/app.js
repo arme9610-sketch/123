@@ -382,7 +382,7 @@ document.addEventListener('click', event => {
   if (button) handleClick(button).catch(error => toast(error.message));
   else { const row=event.target.closest('[data-open-task]'); if(row && currentUser)taskDetails.open(row.dataset.openTask); }
 });
-$('#add-top').onclick = () => page==='판매 · 취소/환불'?document.querySelector('#sales-site-form input')?.focus():['문서','자료실'].includes(page)?openLibrary(page):openForm(page === '사무실 재고' ? 'office' : page === '수입' ? 'inbound' : 'task');
+$('#add-top').onclick = () => page==='판매 · 취소/환불'?document.querySelector('#sales-entry-form input')?.focus():['문서','자료실'].includes(page)?openLibrary(page):openForm(page === '사무실 재고' ? 'office' : page === '수입' ? 'inbound' : 'task');
 $('#close').onclick = () => $('#dialog').close();
 $('#logout').onclick = async () => {
   if(manualOpen&&!closeManualDocument())return;
@@ -391,7 +391,7 @@ $('#logout').onclick = async () => {
 };
 document.addEventListener('submit', async event => {
   const form = event.target; event.preventDefault();
-  if (['sales-site-form','sales-entry-form'].includes(form.id)) return;
+  if (form.id==='sales-entry-form') return;
   if (currentUser && await collectionSubmit(form)) return;
   if (form.id === 'auth-form') { await authenticate(form); return; }
   if (form.id === 'form') { await saveItem(form); return; }
