@@ -182,8 +182,8 @@ test('PostgreSQL: simultaneous invitations cannot reserve more than four staff s
   assert.equal(joins.filter(result => result.status === 201).length, 1, 'A token can be consumed by only one concurrent request.');
   assert.ok(joins.some(result => result.status === 409 || result.status === 403));
   const member = authOf(joins.find(result => result.status === 201));
-  assert.equal((await f.request('/api/invitations', { auth: member })).status, 200);
-  assert.equal((await f.request('/api/invitations', { method: 'POST', auth: member, body: { username: 'over_limit', name: '정원 초과' } })).status, 409);
+  assert.equal((await f.request('/api/invitations', { auth: member })).status, 403);
+  assert.equal((await f.request('/api/invitations', { method: 'POST', auth: member, body: { username: 'over_limit', name: '정원 초과' } })).status, 403);
   for (const invite of accepted.slice(1)) assert.equal((await f.request('/api/join', { method: 'POST', body: { inviteToken: invite.data.inviteToken, password } })).status, 201);
   assert.equal((await f.request('/api/state', { auth: member })).data.users.length, 4);
 });

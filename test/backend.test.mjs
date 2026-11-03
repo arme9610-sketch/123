@@ -77,7 +77,7 @@ test('bootstrap is protected; workspace APIs require a signed-in session', async
   const state = await f.request('/api/state', { auth: admin });
   assert.equal(state.status, 200);
   assert.equal(state.data.users.length, 1);
-  assert.ok(state.data.users.every(user=>!('role' in user)), 'public profiles show names without a hierarchy');
+  assert.ok(state.data.users.every(user=>!('role' in user)), 'legacy role field is not exposed');
   assert.equal(state.data.items.length, 0, 'new shared workspace must not contain fictional user records');
   assert.equal(state.data.messages.length, 0);
   assert.ok(!JSON.stringify(state.data).includes(password));
@@ -145,12 +145,13 @@ test('invalid records never enter the workspace', async t => {
   assert.equal((await f.request('/api/state', { auth: f.admin })).data.messages.length, 0);
 });
 
-test('all employees can invite and revoke; invitations remain single-use and limited to four staff', async t => {
+test('only managers can invite and revoke; invitations remain single-use and limited to four staff', async t => {
   const f = await fixture(t);
   const { member, inviteToken } = await inviteAndJoin(f);
   const reused = await f.request('/api/join', { method: 'POST', body: { inviteToken, password } });
   assert.ok(reused.status >= 400 && reused.status < 500);
-  const memberInvite = await f.request('/api/invitations', { method: 'POST', auth: member, body: { name: '박서연', username: 'worker2' } });
+  assert.equal((await f.request('/api/invitations', { method: 'POST', auth: member, body: { name: '금지', username: 'denied' } })).status,403);
+  const memberInvite = await f.request('/api/invitations', { method: 'POST', auth: f.admin, body: { name: '박서연', username: 'worker2' } });
   assert.equal(memberInvite.status, 201);
   f.authOf(await f.request('/api/join', {method:'POST', body:{inviteToken:memberInvite.data.inviteToken,password}}));
   const pending = await f.request('/api/invitations', { method: 'POST', auth: f.admin, body: { name: '최도윤', username: 'worker3' } });
@@ -162,7 +163,8 @@ test('all employees can invite and revoke; invitations remain single-use and lim
   const invitation = list.data.invitations.find(i => i.username === 'worker3');
   assert.ok(invitation);
   assert.ok(!JSON.stringify(list.data).includes(pending.data.inviteToken), 'raw invitation tokens are shown only once');
-  const revoked = await f.request(`/api/invitations/${invitation.id}`, { method: 'DELETE', auth: member });
+  assert.equal((await f.request(`/api/invitations/${invitation.id}`, { method: 'DELETE', auth: member })).status,403);
+  const revoked = await f.request(`/api/invitations/${invitation.id}`, { method: 'DELETE', auth: f.admin });
   assert.ok(revoked.status >= 200 && revoked.status < 300);
   const revokedJoin = await f.request('/api/join', { method: 'POST', body: { inviteToken: pending.data.inviteToken, password } });
   assert.ok(revokedJoin.status >= 400 && revokedJoin.status < 500);

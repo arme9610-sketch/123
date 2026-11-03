@@ -1,3 +1,6 @@
+import {createSalesDashboard} from './sales-dashboard.js';
+import {calendarEntries,createCalendarDay} from './calendar.js';
+import {createAdministration} from './admin.js';
 import {createDailySales} from './daily-sales.js';
 import {createManualEditor,manualText} from './manual-editor.js';
 import {officeCatalog,officeOperations} from './office-catalog.js';
@@ -15,7 +18,7 @@ const types = { task: ['업무', 'blue'], office:['사무실 입·출고','purpl
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
 let currentUser = null, csrfToken = '', eventStream = null;
-let page = '오늘', month = new Date(base.getFullYear(), base.getMonth(), 1), view = '달력', filter = '전체', taskTab = '전체 업무';
+let page = '오늘', month = new Date(base.getFullYear(), base.getMonth(), 1), view = '달력', taskTab = '전체 업무';
 let invitations = [], inviteResult = null, authMode = 'login', toastTimer;
 let inviteToken = new URLSearchParams(location.hash.slice(1)).get('invite') || '';
 if (inviteToken) history.replaceState(null, '', location.pathname + location.search);
@@ -54,7 +57,7 @@ function connection(text, connected = false) {
 function signedOut(message = '') {
   eventStream?.close(); eventStream = null;chatWidget.clear();
   closeDesktopNotifications();toggleReminders(false);$('#reminder-panel').replaceChildren();$('#reminder-count').hidden=true;
-  salesUI.clear();currentUser = null; csrfToken = ''; state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
+  salesDashboard.clear();calendarUI.clear();adminUI.clear();salesUI.clear();currentUser = null; csrfToken = ''; state = { items: [], users: [], messages: [], stock: {}, revision: -1 };
   invitations = []; inviteResult = null; page = '오늘';searches={};collectionData={};chatSearchActive=false;collectionRequest++;manualGroup='manual';
   $('#office-stock-dialog').close();
   $('#task-detail-dialog').close();
@@ -103,7 +106,7 @@ async function refreshState() {
     do {
       refreshAgain = false;
       const next = await api('/api/state');
-      if (currentUser?.id === userId && next.revision >= state.revision) { state = next; render();chatWidget.update();checkBrowserReminders(); }
+      if (currentUser?.id === userId && next.revision >= state.revision) { if(next.revision>state.revision)salesDashboard.invalidate();state = next;if(next.currentUser)currentUser=next.currentUser; render();chatWidget.update();checkBrowserReminders(); }
     } while (refreshAgain && currentUser?.id === userId);
   })();
   try { await fetchingState; } finally { fetchingState = null; }
@@ -203,12 +206,13 @@ function renderTeam() {
 function teamSettings() {
   return heading('함께하는 사람들', '직원별 계정으로 안전하게 접속하고, 업무와 일정을 함께 나누세요.') +
     `<section class="panel"><div class="panel-head"><h2>함께하는 사람들</h2><span class="muted">${state.users.length} / 4명 가입</span></div>${renderTeam()}</section>
-    <section class="panel invite-panel"><div class="panel-head"><h2>직원 초대</h2><span class="muted">초대는 24시간 동안 유효해요</span></div>
-    ${state.users.length + invitations.length >= 4 ? '<div class="empty">사용자 정원 4명에 도달했어요. 대기 중인 초대도 정원에 포함됩니다.</div>' : '<form id="invite-form" class="invite-form"><label>직원 이름<input name="name" required maxlength="30" placeholder="초대할 직원 이름"></label><label>로그인 아이디<input name="username" required minlength="3" maxlength="40" pattern="[a-zA-Z0-9_.-]+" placeholder="영문, 숫자 3~40자"></label><button class="primary">초대 만들기</button></form>'}
+    ${['owner','admin'].includes(currentUser?.accessRole)?`<section class="panel invite-panel"><div class="panel-head"><h2>직원 초대</h2><span class="muted">초대는 24시간 동안 유효해요</span></div>
+    ${state.users.filter(u=>u.active!==0).length + invitations.length >= 4 ? '<div class="empty">사용자 정원 4명에 도달했어요. 대기 중인 초대도 정원에 포함됩니다.</div>' : '<form id="invite-form" class="invite-form"><label>직원 이름<input name="name" required maxlength="30" placeholder="초대할 직원 이름"></label><label>로그인 아이디<input name="username" required minlength="3" maxlength="40" pattern="[a-zA-Z0-9_.-]+" placeholder="영문, 숫자 3~40자"></label><button class="primary">초대 만들기</button></form>'}
     ${inviteResult ? `<div class="invite-result"><b>${esc(inviteResult.name)}님 초대가 준비되었어요.</b><p>초대 링크를 직원에게 직접 전달해 주세요. 직원이 자신의 비밀번호를 설정합니다.</p><div class="copy-row"><input id="invite-link" readonly aria-label="직원 초대 링크" value="${esc(location.origin + '/#invite=' + encodeURIComponent(inviteResult.inviteToken))}"><button id="copy-invite" class="primary">복사</button></div><small>이 링크는 지금만 확인할 수 있어요. 분실하면 초대를 취소하고 다시 만들어 주세요.</small></div>` : ''}
-    <div class="pending-invites">${invitations.length ? invitations.map(i => `<div class="pending-invite"><div><b>${esc(i.name)}</b><small>${esc(i.username)} · ${esc(new Date(i.expiresAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }))}까지</small></div><button data-revoke="${esc(i.id)}">초대 취소</button></div>`).join('') : empty('대기 중인 초대가 없습니다.')}</div></section>`;
+    <div class="pending-invites">${invitations.length ? invitations.map(i => `<div class="pending-invite"><div><b>${esc(i.name)}</b><small>${esc(i.username)} · ${esc(new Date(i.expiresAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }))}까지</small></div><button data-revoke="${esc(i.id)}">초대 취소</button></div>`).join('') : empty('대기 중인 초대가 없습니다.')}</div></section>`:''}${adminUI.render()}`;
 }
 async function refreshInvitations() {
+  if(!['owner','admin'].includes(currentUser?.accessRole)){invitations=[];return;}
   const result = await api('/api/invitations'); invitations = result.invitations;
   if (page === '사용자' && currentUser) render();
 }
@@ -219,19 +223,29 @@ function deadlineBadge(i){const label=page==='업무'&&taskTab==='내 업무'?de
 function row(i){return `<div class="item task-item" data-open-task="${esc(i.id)}"><button class="check ${i.done?'checked':''}" data-done="${i.id}" aria-label="${esc(i.title)} ${i.done?'완료 취소':'완료 처리'}">${i.done?'✓':''}</button><div class="item-text"><button class="text-button ${i.done?'strike':''}" data-detail="${esc(i.id)}">${esc(i.title)}</button><small>${i.seriesId?'반복업무 · ':''}요청 ${esc(i.date)} · 마감 ${esc(i.dueDate||i.date)} · 요청 ${esc(i.requester)} → 담당 ${esc(i.owner)}</small><small>${i.type==='office'?esc(officeCatalog.find(s=>s.id===i.officeSku)?.label||'')+' · '+esc(officeOperations[i.officeOperation]||'')+' '+i.qty+'개 · ':''}${esc(i.note)||'등록된 메모가 없습니다.'}</small></div>${deadlineBadge(i)}${priorityBadge(i)}${badge(i)}<span class="person">${esc(i.owner)}</span><button class="dots" data-edit="${i.id}" aria-label="상세 보기">↗</button></div>`}
 function heading(title,sub,extra=''){return `<div class="heading"><div><p class="eyebrow">EVERY DAY, IN SYNC</p><h1>${title}</h1><p class="subtitle">${sub}</p></div>${extra}</div>`}
 function render(){if(!currentUser)return;today=seoulDate();base=new Date(today+'T12:00:00');const preserved=captureDraft();nav();let html='';const due=state.items.filter(i=>i.date===today), pending=due.filter(i=>!i.done), completed=due.filter(i=>i.done).length;
-if(page==='오늘'){html=heading(`좋은 하루예요, ${esc(currentUser.name)}님 <span class="wave">☀</span>`,'오늘의 흐름을 한눈에 확인하세요.',`<div class="date-pill">${base.getFullYear()}년 ${base.getMonth()+1}월 ${base.getDate()}일 <b>${['일','월','화','수','목','금','토'][base.getDay()]}요일</b></div>`)+`<section class="welcome"><div><span class="tag">ARME WORKSPACE</span><h2>오늘을 가볍게. 함께, 더 선명하게.</h2><p>할 일부터 입고와 발송까지.<br>하루의 모든 흐름을 한눈에.</p><button data-page="공용 달력">달력 살펴보기 <span>↗</span></button></div><div class="art" aria-hidden="true"><div class="art-card"><span>THIS IS OUR DAY</span><strong>${base.getDate()}</strong><div>✦ &nbsp; Make it happen</div></div><div class="art-check">✓</div><span class="spark">✦</span><div class="art-line"></div></div></section><section class="stats">${[['오늘 할 일',pending.filter(i=>['task','office'].includes(i.type)).length,'건','blue','☑','업무'],['오늘 완료',completed,'건','green','✓','업무']].map(a=>`<button class="stat" data-page="${a[5]}"><div><span>${a[0]}</span><i class="${a[3]}">${icon(a[5])}</i></div><strong>${a[1]}<small>${a[2]}</small></strong><p>${a[0]==='오늘 완료'?'차근차근 잘하고 있어요':'함께 확인하는 오늘'} <span>↗</span></p></button>`).join('')}</section><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h2>오늘의 업무 <span>${due.filter(i=>['task','office'].includes(i.type)).length}</span></h2><button data-page="업무">전체 보기 →</button></div>${due.filter(i=>['task','office'].includes(i.type)).sort((a,b)=>Number(a.done)-Number(b.done)).map(row).join('')||empty('오늘 등록된 업무가 없어요.')}<button class="add-row" data-new="task">＋ 새로운 업무 추가</button></section><section class="panel"><div class="panel-head"><h2>함께하는 사람들</h2><span class="muted">${state.users.length}명</span></div>${renderTeam()}<div class="team-note">${state.users.length<4?'직원을 초대하고 함께 시작해 보세요.<button data-page="사용자">새로운 사용자 초대 ↗</button>':'작은 공유가 더 나은 협업을 만들어요.<button data-page="채팅">채팅 열기 ↗</button>'}</div></section></div><section class="panel schedule"><div class="panel-head"><h2>오늘의 입고 & 발송 <span>${due.filter(i=>['inbound','shipment'].includes(i.type)).length}</span></h2><button data-page="공용 달력">달력에서 보기 →</button></div>${table(due.filter(i=>['inbound','shipment'].includes(i.type)))}</section>`;
-}else if(page==='공용 달력'){html=heading('함께 보는 일정','입고, 발송, 업무 일정을 함께 확인하고 준비하세요.',`<button class="primary" data-new="meeting">＋ 일정 등록</button>`)+`<section class="panel"><div class="calendar-toolbar"><div class="month-controls"><button id="prev" aria-label="이전 달">‹</button><h2>${month.getFullYear()}년 ${month.getMonth()+1}월</h2><button id="next" aria-label="다음 달">›</button><button id="this-month">이번 달</button></div><div class="segmented">${['달력','표'].map(v=>`<button data-view="${v}" class="${view===v?'selected':''}">${v}</button>`).join('')}</div></div><div class="filters">${['전체',...Object.values(types).map(v=>v[0])].map(f=>`<button data-filter="${f}" class="${f===filter?'selected':''}">${f}</button>`).join('')}<span>● 입고 &nbsp; ● 발송 &nbsp; ● 업무 &nbsp; ● 일정</span></div>${view==='달력'?calendar():table(filtered().filter(i=>i.date.startsWith(`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}`)))}</section>`;
+if(page==='오늘'){html=heading(`좋은 하루예요, ${esc(currentUser.name)}님 <span class="wave">☀</span>`,'오늘의 흐름을 한눈에 확인하세요.',`<div class="date-pill">${base.getFullYear()}년 ${base.getMonth()+1}월 ${base.getDate()}일 <b>${['일','월','화','수','목','금','토'][base.getDay()]}요일</b></div>`)+salesDashboard.render()+`<section class="welcome"><div><span class="tag">ARME WORKSPACE</span><h2>오늘을 가볍게. 함께, 더 선명하게.</h2><p>할 일부터 입고와 발송까지.<br>하루의 모든 흐름을 한눈에.</p><button data-page="공용 달력">달력 살펴보기 <span>↗</span></button></div><div class="art" aria-hidden="true"><div class="art-card"><span>THIS IS OUR DAY</span><strong>${base.getDate()}</strong><div>✦ &nbsp; Make it happen</div></div><div class="art-check">✓</div><span class="spark">✦</span><div class="art-line"></div></div></section><section class="stats">${[['오늘 할 일',pending.filter(i=>['task','office'].includes(i.type)).length,'건','blue','☑','업무'],['오늘 완료',completed,'건','green','✓','업무']].map(a=>`<button class="stat" data-page="${a[5]}"><div><span>${a[0]}</span><i class="${a[3]}">${icon(a[5])}</i></div><strong>${a[1]}<small>${a[2]}</small></strong><p>${a[0]==='오늘 완료'?'차근차근 잘하고 있어요':'함께 확인하는 오늘'} <span>↗</span></p></button>`).join('')}</section><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h2>오늘의 업무 <span>${due.filter(i=>['task','office'].includes(i.type)).length}</span></h2><button data-page="업무">전체 보기 →</button></div>${due.filter(i=>['task','office'].includes(i.type)).sort((a,b)=>Number(a.done)-Number(b.done)).map(row).join('')||empty('오늘 등록된 업무가 없어요.')}<button class="add-row" data-new="task">＋ 새로운 업무 추가</button></section><section class="panel"><div class="panel-head"><h2>함께하는 사람들</h2><span class="muted">${state.users.length}명</span></div>${renderTeam()}<div class="team-note">${state.users.length<4?'직원을 초대하고 함께 시작해 보세요.<button data-page="사용자">새로운 사용자 초대 ↗</button>':'작은 공유가 더 나은 협업을 만들어요.<button data-page="채팅">채팅 열기 ↗</button>'}</div></section></div><section class="panel schedule"><div class="panel-head"><h2>오늘의 입고 & 발송 <span>${due.filter(i=>['inbound','shipment'].includes(i.type)).length}</span></h2><button data-page="공용 달력">달력에서 보기 →</button></div>${table(due.filter(i=>['inbound','shipment'].includes(i.type)))}</section>`;
+}else if(page==='공용 달력'){html=heading('함께 보는 일정','입고, 발송, 업무 일정을 함께 확인하고 준비하세요.',`<button class="primary" data-new="meeting">＋ 일정 등록</button>`)+`<section class="panel"><div class="calendar-toolbar"><div class="month-controls"><button id="prev" aria-label="이전 달">‹</button><h2>${month.getFullYear()}년 ${month.getMonth()+1}월</h2><button id="next" aria-label="다음 달">›</button><button id="this-month">이번 달</button></div><div class="segmented">${['달력','표'].map(v=>`<button data-view="${v}" class="${view===v?'selected':''}">${v}</button>`).join('')}</div></div><div class="calendar-all-note">전체 일정 · 날짜 칸을 눌러 추가·수정·삭제하세요.</div>${view==='달력'?calendar():calendarAgenda()}</section>`;
 }else if(page==='업무'){const items=state.items.filter(i=>['task','shipment','office'].includes(i.type)&&(taskTab!=='내 업무'||i.ownerId===currentUser.id)).sort((a,b)=>Number(a.done)-Number(b.done)||Number(b.priority==='urgent')-Number(a.priority==='urgent')||(a.dueDate||a.date).localeCompare(b.dueDate||b.date));html=heading('업무를 함께, 차근차근','담당자와 마감일을 정하고 진행 상황을 공유하세요.',`<button class="primary" data-new="task">＋ 업무 요청</button>`)+`<div class="tabs">${['전체 업무','내 업무','부탁한 업무'].map(t=>`<button data-tab="${t}" class="${taskTab===t?'selected':''}">${t}</button>`).join('')}</div><section class="panel">${(taskTab==='부탁한 업무'?items.filter(i=>i.requesterId===currentUser.id):items).map(row).join('')||empty('아직 등록된 업무가 없어요.')}</section>` + recurringList();
  }else if(page==='판매 · 취소/환불'){html=salesUI.render();}else if(page==='사무실 재고'){html=officeUI.render();}else if(page==='수입'){
 html=heading('수입','인천 ETA와 창고 입고 일정을 확인하세요.',`<button class="primary" data-new="inbound">＋ 수입 일정 등록</button>`)+`<section class="panel">${importTable(state.items.filter(i=>i.type==='inbound'))}</section>`;
 }else if(page==='사용자'){html=teamSettings();}else if(page==='아카이브'){html=archivePage();}else if(['문서','자료실'].includes(page)){html=libraryPage(page);}else{html=chatPage();}
-$('#main').innerHTML=html;restoreDraft(preserved);chatWidget.refreshView();
+$('#main').innerHTML=html;restoreDraft(preserved);chatWidget.refreshView();calendarUI.refresh();
 }
 function empty(t){return `<div class="empty">${t}</div>`}
-function filtered(){return state.items.filter(i=>filter==='전체'||types[i.type][0]===filter)}
 function importTable(items){return `<div class="table-wrap"><table><thead><tr><th>일정 / 내용</th><th>인천 ETA 날짜</th><th>창고 입고 날짜</th><th>상태</th></tr></thead><tbody>${items.map(i=>`<tr><td><button class="text-button" data-edit="${i.id}">${esc(i.title)}</button>${i.note?`<small class="tracking">${esc(i.note)}</small>`:''}</td><td>${esc(i.date)}</td><td>${esc(i.warehouseDate||'미정')}</td><td><span class="status ${i.done?'done':''}">${i.done?'완료':'예정'}</span><button class="complete" data-done="${i.id}">${i.done?'완료 취소':'완료 처리'}</button></td></tr>`).join('')}</tbody></table>${items.length?'':empty('등록된 수입 일정이 없습니다.')}</div>`;}
 function table(items){return `<div class="table-wrap"><table><thead><tr><th>일정 / 내용</th><th>날짜</th><th>수량</th><th>담당자</th><th>상태</th><th></th></tr></thead><tbody>${items.map(i=>`<tr><td>${badge(i)} <button class="text-button" data-edit="${i.id}">${esc(i.title)}</button>${i.tracking?`<small class="tracking">${esc(i.tracking)}</small>`:''}</td><td>${esc(i.date.slice(5).replace('-','.'))}</td><td>${i.qty}${i.type==='shipment'?'건':'개'}</td><td><span class="mini-avatar">${esc(i.owner[0])}</span> ${esc(i.owner)}</td><td><span class="status ${i.done?'done':''}">${i.done?'완료':'예정'}</span></td><td><button class="complete" data-done="${i.id}">${i.done?'완료 취소':'완료 처리'}</button></td></tr>`).join('')}</tbody></table>${items.length?'':empty('등록된 일정이 없습니다.')}</div>`}
-function calendar(){let start=new Date(month);start.setDate(1-start.getDay());return `<div class="weekdays">${['일','월','화','수','목','금','토'].map(w=>`<span>${w}</span>`).join('')}</div><div class="calendar">${Array.from({length:42},(_,n)=>{let d=new Date(start);d.setDate(d.getDate()+n);let date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;return `<div class="day ${d.getMonth()!==month.getMonth()?'outside':''}"><button class="day-number ${date===today?'is-today':''}" data-date="${date}" aria-label="${date} 일정 추가">${d.getDate()}</button>${filtered().filter(i=>i.date===date).map(i=>`<button class="event ${types[i.type][1]} ${i.done?'finished':''}" data-edit="${i.id}">${esc(i.title)}${i.type==='inbound'?` · ${i.qty}개`:''}</button>`).join('')}</div>`}).join('')}</div>`}
+function calendar(){
+ const start=new Date(month);start.setDate(1-start.getDay());const events=calendarEntries(state.items);
+ return `<div class="weekdays">${['일','월','화','수','목','금','토'].map(w=>`<span>${w}</span>`).join('')}</div><div class="calendar">${Array.from({length:42},(_,n)=>{
+  const d=new Date(start);d.setDate(d.getDate()+n);const date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,entries=events.filter(e=>e.date===date);
+  return `<div class="day ${d.getMonth()!==month.getMonth()?'outside':''}" role="button" tabindex="0" data-calendar-day="${date}" aria-label="${date}, 일정 ${entries.length}개, 일정 보기 및 추가"><span class="day-number ${date===today?'is-today':''}">${d.getDate()}</span>${entries.map(({item:i,milestone})=>`<span class="event ${types[i.type][1]} ${i.done?'finished':''}" title="${esc((milestone?milestone+' · ':'')+i.title)}">${milestone?`<b>${esc(milestone)}</b> · `:''}${esc(i.title)}${i.type==='inbound'?` · ${i.qty}개`:''}</span>`).join('')}</div>`;
+ }).join('')}</div>`;
+}
+function calendarAgenda(){
+ const prefix=`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}`;
+ const entries=calendarEntries(state.items).filter(e=>e.date.startsWith(prefix)).sort((a,b)=>a.date.localeCompare(b.date)||a.item.title.localeCompare(b.item.title,'ko'));
+ return `<div class="table-wrap"><table><thead><tr><th>날짜</th><th>구분</th><th>일정 / 내용</th><th>상태</th><th>관리</th></tr></thead><tbody>${entries.map(({item:i,date,milestone})=>`<tr><td><button type="button" data-calendar-day="${date}">${esc(date)}</button></td><td>${esc(milestone||types[i.type][0])}</td><td><button type="button" data-edit="${i.id}">${esc(i.title)}</button></td><td>${i.done?'완료':'예정'}</td><td><button type="button" class="danger-button" data-delete-item="${i.id}">삭제</button></td></tr>`).join('')}</tbody></table>${entries.length?'':empty('등록된 일정이 없습니다.')}</div>`;
+}
 
 // Preserve unsent messages and invitations when another teammate changes shared data.
 function captureDraft() {
@@ -286,6 +300,7 @@ function openForm(type = 'task', date = today, id = null) {
   form.elements.ownerId.innerHTML = state.users.map(user => `<option value="${esc(user.id)}">${esc(user.name)}</option>`).join('');
   form.elements.ownerId.value = item?.ownerId || currentUser.id;
   for (const field of ['title', 'qty', 'note', 'tracking']) if (item) form.elements[field].value = item[field] ?? '';
+  $('#delete-item').hidden=!item;
   $('#form-title').textContent = item ? '업무 · 일정 수정' : request ? '업무 요청' : '새로운 일정 등록';
   if (item?.done) { $('#form-error').textContent = '수정하려면 먼저 완료를 취소해 주세요.'; form.querySelector('.submit').disabled = true; }
   updateItemFields();
@@ -333,7 +348,7 @@ async function saveItem(form) {
 async function navigate(nextPage) {
   if(manualOpen&&!closeManualDocument())return;
   page = menuPages.includes(nextPage) ? nextPage : '오늘'; render();
-  if (page === '사용자') await refreshInvitations();
+  if (page === '사용자'&&['owner','admin'].includes(currentUser?.accessRole)) await refreshInvitations();
     if (collections[page]) await loadCollection(page);
 }
 async function handleClick(button) {
@@ -343,13 +358,13 @@ async function handleClick(button) {
   if(await reminderClick(button))return;
   await collectionClick(button);
   if (button.dataset.page) await navigate(button.dataset.page);
+  if(button.dataset.deleteItem){await removeItem(button.dataset.deleteItem);return;}
   if (button.dataset.detail) { taskDetails.open(button.dataset.detail); return; }
   if (button.dataset.stopSeries) { await stopSeries(button.dataset.stopSeries); return; }
   if (button.dataset.new) openForm(button.dataset.new);
   if (button.dataset.edit) taskDetails.open(button.dataset.edit);
   if (button.dataset.date) openForm('meeting', button.dataset.date);
   if (button.dataset.view) { view = button.dataset.view; render(); }
-  if (button.dataset.filter) { filter = button.dataset.filter; render(); }
   if (button.dataset.tab) { taskTab = button.dataset.tab; render(); }
   if (['prev', 'next', 'this-month'].includes(button.id)) {
     month = button.id === 'this-month' ? new Date(base.getFullYear(), base.getMonth(), 1) : new Date(month.getFullYear(), month.getMonth() + (button.id === 'next' ? 1 : -1), 1);
@@ -383,6 +398,7 @@ document.addEventListener('click', event => {
   else { const row=event.target.closest('[data-open-task]'); if(row && currentUser)taskDetails.open(row.dataset.openTask); }
 });
 $('#add-top').onclick = () => page==='판매 · 취소/환불'?document.querySelector('#sales-entry-form input')?.focus():['문서','자료실'].includes(page)?openLibrary(page):openForm(page === '사무실 재고' ? 'office' : page === '수입' ? 'inbound' : 'task');
+$('#delete-item').onclick=()=>{if(editing)removeItem(editing,editingVersion);};
 $('#close').onclick = () => $('#dialog').close();
 $('#logout').onclick = async () => {
   if(manualOpen&&!closeManualDocument())return;
@@ -391,7 +407,7 @@ $('#logout').onclick = async () => {
 };
 document.addEventListener('submit', async event => {
   const form = event.target; event.preventDefault();
-  if (form.id==='sales-entry-form') return;
+  if (['sales-entry-form','admin-backup-export','admin-backup-verify'].includes(form.id)) return;
   if (currentUser && await collectionSubmit(form)) return;
   if (form.id === 'auth-form') { await authenticate(form); return; }
   if (form.id === 'form') { await saveItem(form); return; }
@@ -685,6 +701,21 @@ function recurringList() {
   const series = (state.recurring || []).filter(s=>!s.stoppedDate && (taskTab !== '내 업무' || s.ownerId === currentUser.id) && (taskTab !== '부탁한 업무' || s.requesterId === currentUser.id));
   return series.length ? `<section class="panel schedule"><div class="panel-head"><h2>반복 요청 중</h2></div>${series.map(s=>`<div class="item"><div class="item-text"><b>${esc(s.title)}</b><small>${esc(s.startDate)}부터 영업일마다 · 요청 ${esc(s.requester)} → 담당 ${esc(s.owner)}</small></div><button data-stop-series="${esc(s.id)}" class="text-button">반복 중지</button></div>`).join('')}</section>` : '';
 }
+const salesDashboard=createSalesDashboard({api,escape:esc,getUser:()=>currentUser,getToday:()=>today});
+const adminUI=createAdministration({api,escape:esc,getUser:()=>currentUser,getState:()=>state,refresh:refreshState,toast});
 const salesUI=createDailySales({api,escape:esc,toast,getUser:()=>currentUser});
 const officeUI=createOfficeStock({api,escape:esc,getState:()=>state,refresh:refreshState,toast});
-const taskDetails = createTaskDetails({api,escape:esc,getUser:()=>currentUser,getItem:id=>state.items.find(i=>i.id===id),refresh:refreshState,edit:item=>openForm(item.type,item.date,item.id),stop:stopSeries,toast});
+async function removeItem(id,expectedVersion){
+ const item=state.items.find(i=>i.id===id);if(!item)return false;
+ const warning=item.type==='inbound'&&item.done?' 완료된 수입 일정을 삭제하면 수입 누적 수량에서도 제외됩니다.':'';
+ const recurring=item.seriesId?' 이 날짜의 업무만 삭제하며 이후 반복업무는 유지됩니다.':'';
+ if(!confirm(`「${item.title}」 일정·업무를 삭제하시겠어요? 복구하려면 백업이 필요합니다.${warning}${recurring}`))return false;
+ try{
+  await api('/api/items/'+encodeURIComponent(id),{method:'DELETE',body:{version:expectedVersion??item.version}});
+  try{localStorage.removeItem('dayon-task-draft-'+currentUser.id+'-'+id);}catch{}
+  if(editing===id){$('#dialog').close();editing=null;}
+  await refreshState();if(page==='아카이브')await loadCollection(page);toast('일정·업무를 삭제했어요.');return true;
+ }catch(error){toast(error.message);if(error.status===409)await refreshState().catch(()=>{});return false;}
+}
+const calendarUI=createCalendarDay({escape:esc,getItems:()=>state.items,add:date=>openForm('meeting',date),edit:id=>{const item=state.items.find(i=>i.id===id);if(item?.done)taskDetails.open(id);else if(item)openForm(item.type,item.date,id);},remove:removeItem});
+const taskDetails = createTaskDetails({api,escape:esc,getUser:()=>currentUser,getItem:id=>state.items.find(i=>i.id===id),refresh:refreshState,edit:item=>openForm(item.type,item.date,item.id),remove:removeItem,stop:stopSeries,toast});

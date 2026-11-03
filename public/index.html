@@ -66,7 +66,7 @@
       <label id="tracking-field">운송장 번호 (택배 발송)<input name="tracking" maxlength="100" placeholder="택배사와 운송장 번호"></label>
       <p class="privacy">등록한 내용은 로그인한 모든 사용자가 함께 볼 수 있어요.</p>
       <p id="form-error" class="form-error" role="alert"></p>
-      <button class="primary submit">저장하기</button>
+      <button class="primary submit">저장하기</button><button type="button" id="delete-item" class="danger-button" hidden>일정 · 업무 삭제</button>
     </form>
   </dialog>
   <dialog id="resource-dialog"><form id="resource-form">
@@ -77,6 +77,7 @@
     <p id="resource-error" class="form-error" role="alert"></p><button type="submit" class="primary submit">자료 저장</button>
   </form></dialog>
   <dialog id="office-stock-dialog" aria-label="사무실 재고 입력"></dialog>
+  <dialog id="calendar-day-dialog" aria-label="날짜별 일정 관리"></dialog>
   <dialog id="task-detail-dialog" class="task-detail-drawer" aria-label="업무 상세"></dialog>
   <dialog id="menu-order-dialog" aria-labelledby="menu-order-title">
     <div class="dialog-title"><h2 id="menu-order-title">메뉴 순서</h2><button type="button" id="menu-order-cancel" aria-label="메뉴 순서 닫기">✕</button></div>

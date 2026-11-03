@@ -1,3 +1,5 @@
+import {bootstrapOwner} from './lib/admin-schema.mjs';
+import {adminRoutes,manager,verifyInitialBackup,audit} from './lib/admin.mjs';
 import {salesRoutes} from './lib/daily-sales.mjs';
 import {officeRoutes,officeSnapshot,officeLogs,validateOffice} from './lib/office-stock.mjs';
 import {generateRecurring} from './lib/recurring.mjs';
@@ -16,7 +18,7 @@ import { token, hash, safeEqual, passwordHash, verifyPassword, AppError, require
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const sessionAge = 7 * 24 * 60 * 60 * 1000;
 const invitationAge = 24 * 60 * 60 * 1000;
-const sessionQuery = 'SELECT sessions.*,users.id,users.name,users.username FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires_at>?';
+const sessionQuery = 'SELECT sessions.*,users.id,users.name,users.username,a.access_role,a.active FROM sessions JOIN users ON users.id=sessions.user_id JOIN account_access a ON a.user_id=users.id WHERE a.active=1 AND token_hash=? AND expires_at>?';
 
 export async function createApp({
   now = () => new Date(),
@@ -30,6 +32,8 @@ export async function createApp({
     throw Object.assign(new Error('DATABASE_URL is required for this deployment.'), { code: 'DAYON_CONFIG' });
   }
   const db = await openStorage({ dataDir, databaseUrl });
+  try{await bootstrapOwner(db);}catch(error){await db.close();throw error;}
+  try{await verifyInitialBackup(db);}catch(error){console.error('Initial backup rehearsal failed:',error.code||error.name);}
   const streams = new Set(), attempts = new Map();
   const initialized = async (connection = db) => !!(await connection.get('SELECT 1 FROM users LIMIT 1'));
   try {
@@ -78,7 +82,8 @@ export async function createApp({
       await connection.run('INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at) VALUES(?,?,?,?)', [hash(raw), user.id, csrfToken, Date.now() + sessionAge]);
     });
     res.setHeader('Set-Cookie', `moa_session=${raw}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${sessionAge / 1000}${secureCookie ? '; Secure' : ''}`);
-    return { user: publicUser(user), csrfToken };
+    const access=await db.get('SELECT access_role,active FROM account_access WHERE user_id=?',[user.id]);
+    return { user: publicUser({...user,...access}), csrfToken };
   }
   function originCheck(req) {
     const origin = req.headers.origin, expected = `${secureCookie ? 'https' : 'http'}://${req.headers.host}`;
@@ -104,7 +109,7 @@ export async function createApp({
   }
   async function checkCapacity(connection) {
     await connection.run('DELETE FROM invitations WHERE expires_at<=?', [Date.now()]);
-    const users = Number((await connection.get('SELECT count(*) n FROM users')).n);
+    const users = Number((await connection.get('SELECT count(*) n FROM users u JOIN account_access a ON a.user_id=u.id WHERE a.active=1')).n);
     const invitations = Number((await connection.get('SELECT count(*) n FROM invitations')).n);
     if (users + invitations >= 4) throw new AppError(409, '직원은 초대 대기 중인 계정을 포함해 최대 4명입니다.');
   }
@@ -140,14 +145,15 @@ export async function createApp({
     if (!Number.isSafeInteger(body.version) || body.version !== current.version) throw new AppError(409, '다른 직원이 먼저 수정했습니다. 최신 내용을 확인한 후 다시 시도해 주세요.');
   }
 
+  const administration=adminRoutes({db,auth,json,changed,publish});
   const chat = chatRoutes({db,auth,json,changed,publish});
-  const sales = salesRoutes({db,auth,json,changed,publish});
+  const sales = salesRoutes({db,auth,json,changed,publish,today:()=>seoulDate(now())});
   const office = officeRoutes({db,auth,json,changed,publish});
   const features = featureRoutes({db,auth,json,changed,publish});
   async function api(req, res, url) {
-    if (await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
+    if (await administration(req,res,url) || await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
-    if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized() });
+    if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized(),ownerConfigured:!!(await db.get("SELECT user_id FROM account_access WHERE access_role='owner' AND active=1")),ownerAssignmentComplete:!!(await db.get("SELECT value FROM metadata WHERE key='owner_gijeong1312_v1'")),backupRestoreVerified:!!(await db.get("SELECT value FROM metadata WHERE key='initial_backup_restore_verified_v1'")) });
     if (route === '/api/setup' && method === 'POST') {
       originCheck(req); limit(req);
       const body = await jsonBody(req);
@@ -159,6 +165,7 @@ export async function createApp({
       await db.transaction(async connection => {
         if (await initialized(connection)) throw new AppError(409, '이미 초기 설정이 완료되었습니다.');
         await connection.run('INSERT INTO users(id,name,username,password_hash,role,created_at) VALUES(?,?,?,?,?,?)', [user.id, name, username, encoded, 'admin', new Date().toISOString()]);
+        await connection.run("INSERT INTO account_access(user_id,access_role) VALUES(?,'owner')",[user.id]);
         await changed(connection);
       });
       await publish();
@@ -169,6 +176,7 @@ export async function createApp({
       const body = await jsonBody(req), username = validateUsername(body.username), password = validatePassword(body.password);
       const user = await db.get('SELECT * FROM users WHERE username=?', [username]);
       const valid = await verifyPassword(password, user?.password_hash || '00000000000000000000000000000000:' + '0'.repeat(128));
+      if(!await db.get('SELECT user_id FROM account_access WHERE user_id=? AND active=1',[user?.id||'']))throw new AppError(401,'아이디 또는 비밀번호를 확인해 주세요.');
       if (!user || !valid) throw new AppError(401, '아이디 또는 비밀번호를 확인해 주세요.');
       return json(res, 200, await setSession(res, user));
     }
@@ -182,8 +190,9 @@ export async function createApp({
       await db.transaction(async connection => {
         const current = await connection.get('SELECT * FROM invitations WHERE id=? AND expires_at>?', [invitation.id, Date.now()]);
         if (!current) throw new AppError(409, '초대 코드가 이미 사용되었거나 만료되었습니다.');
-        if (Number((await connection.get('SELECT count(*) n FROM users')).n) >= 4) throw new AppError(409, '직원은 최대 4명입니다.');
+        if (Number((await connection.get('SELECT count(*) n FROM users u JOIN account_access a ON a.user_id=u.id WHERE a.active=1')).n) >= 4) throw new AppError(409, '직원은 최대 4명입니다.');
         await connection.run('INSERT INTO users(id,name,username,password_hash,role,created_at) VALUES(?,?,?,?,?,?)', [user.id, user.name, user.username, encoded, 'member', new Date().toISOString()]);
+        await connection.run('INSERT INTO account_access(user_id) VALUES(?)',[user.id]);
         await connection.run('DELETE FROM invitations WHERE id=?', [invitation.id]);
         await changed(connection);
       });
@@ -204,12 +213,12 @@ export async function createApp({
       const user=await auth(req);
       await db.transaction(async connection => { if (await generateRecurring(connection,seoulDate(now()))) await changed(connection); });
       const result = await db.transaction(async connection => {
-        const users = await connection.all('SELECT id,name,username FROM users ORDER BY name,id');
+        const users = await connection.all('SELECT u.id,u.name,u.username,a.access_role AS "accessRole",a.active,a.version AS "accessVersion" FROM users u JOIN account_access a ON a.user_id=u.id ORDER BY u.name,u.id');
         const items = (await connection.all(`${itemQuery} ORDER BY items.date,${db.itemOrder}`)).map(itemRow);
         const messages = (await connection.all(db.messageQuery)).map(messageRow), stock = Object.create(null);
         for (const item of items) if (item.type === 'inbound' && item.done) stock[item.title] = (stock[item.title] || 0) + item.qty;
         const recurring = await connection.all('SELECT s.*,o.name owner,r.name requester FROM recurring_tasks s JOIN users o ON o.id=s.owner_id JOIN users r ON r.id=s.requester_id ORDER BY s.start_date,s.id');
-        return {officeStockLogs:await officeLogs(connection),officeStock:await officeSnapshot(connection), recurring: recurring.map(s => ({id:s.id,title:s.title,ownerId:s.owner_id,owner:s.owner,requesterId:s.requester_id,requester:s.requester,startDate:s.start_date,stoppedDate:s.stopped_date,version:s.version})), users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
+        return {currentUser:publicUser(user),officeStockLogs:await officeLogs(connection),officeStock:await officeSnapshot(connection), recurring: recurring.map(s => ({id:s.id,title:s.title,ownerId:s.owner_id,owner:s.owner,requesterId:s.requester_id,requester:s.requester,startDate:s.start_date,stoppedDate:s.stopped_date,version:s.version})), users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
       }, { readOnly: true });
       return json(res, 200, result);
     }
@@ -276,6 +285,14 @@ export async function createApp({
       await publish(); return json(res, 201, { item: await getItem(id) });
     }
     const itemMatch = route.match(/^\/api\/items\/([^/]+)(\/toggle)?$/);
+    if(itemMatch&&method==='DELETE'&&!itemMatch[2]){
+      const user=await auth(req,true),body=await jsonBody(req);
+      await db.transaction(async c=>{
+        const current=await getItem(itemMatch[1],c);checkVersion(body,current);
+        await c.run('DELETE FROM items WHERE id=? AND version=?',[current.id,current.version]);
+        await audit(c,user,'item_deleted',current.id,{title:current.title,type:current.type,date:current.date,warehouseDate:current.warehouseDate,done:current.done,qty:current.qty,seriesId:current.seriesId});await changed(c);
+      });await publish();return json(res,200,{ok:true});
+    }
     if (itemMatch && ((method === 'PUT' && !itemMatch[2]) || (method === 'POST' && itemMatch[2]))) {
       await auth(req, true);
       const body = await jsonBody(req), updated = itemMatch[2] ? null : await validateItem(body);
@@ -304,15 +321,15 @@ export async function createApp({
       await publish(); return json(res, 201, { message: messageRow(await db.get(`SELECT m.*,m.${db.kind==='postgres'?'seq':'rowid'} AS message_sequence,u.name FROM messages m JOIN users u ON u.id=m.user_id WHERE m.id=?`,[id])) });
     }
     if (route === '/api/invitations' && method === 'GET') {
-      await auth(req);
+      const actor=await auth(req);await manager(db,actor.id);
       const invitations = (await db.all(`SELECT id,name,username,expires_at FROM invitations WHERE expires_at>? ORDER BY ${db.invitationOrder}`, [Date.now()])).map(i => ({ id: i.id, name: i.name, username: i.username, expiresAt: new Date(Number(i.expires_at)).toISOString() }));
       return json(res, 200, { invitations });
     }
     if (route === '/api/invitations' && method === 'POST') {
-      await auth(req, true);
+      const actor=await auth(req, true);await manager(db,actor.id);
       const body = await jsonBody(req), name = requireText(body.name, '이름', 30), username = validateUsername(body.username), inviteToken = token(), expiresAt = Date.now() + invitationAge;
       await db.transaction(async connection => {
-        await checkCapacity(connection);
+        await manager(connection,actor.id);await checkCapacity(connection);
         if ((await connection.get('SELECT 1 FROM users WHERE username=?', [username])) || (await connection.get('SELECT 1 FROM invitations WHERE username=?', [username]))) throw new AppError(409, '이미 사용 중이거나 초대된 아이디입니다.');
         await connection.run('INSERT INTO invitations(id,token_hash,name,username,expires_at) VALUES(?,?,?,?,?)', [randomUUID(), hash(inviteToken), name, username, expiresAt]);
         await changed(connection);
@@ -321,8 +338,9 @@ export async function createApp({
     }
     const inviteMatch = route.match(/^\/api\/invitations\/([^/]+)$/);
     if (inviteMatch && method === 'DELETE') {
-      await auth(req, true);
+      const actor=await auth(req, true);await manager(db,actor.id);
       await db.transaction(async connection => {
+        await manager(connection,actor.id);
         const result = await connection.run('DELETE FROM invitations WHERE id=?', [inviteMatch[1]]);
         if (!result.changes) throw new AppError(404, '초대를 찾을 수 없습니다.');
         await changed(connection);

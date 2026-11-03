@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {createApp} from '../server.mjs';
 import {officeCatalog} from '../public/office-catalog.js';
 test('daily manual sales: auth, complete options, conflict, date isolation, stock isolation and persistence',async t=>{
- const dir=await mkdtemp('/tmp/dayon-sales-'),setupToken=randomUUID();let app,base;async function start(){app=await createApp({dataDir:dir,setupToken});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+app.server.address().port;}await start();t.after(async()=>{await app.close();await rm(dir,{recursive:true,force:true});});let headers={'Content-Type':'application/json'};
+ const dir=await mkdtemp('/tmp/dayon-sales-'),setupToken=randomUUID();let app,base;async function start(){app=await createApp({dataDir:dir,setupToken,now:()=>new Date('2026-11-04T03:00:00Z')});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+app.server.address().port;}await start();t.after(async()=>{await app.close();await rm(dir,{recursive:true,force:true});});let headers={'Content-Type':'application/json'};
  async function req(path,method='GET',body,h=headers){const r=await fetch(base+path,{method,headers:h,body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
  assert.equal((await req('/api/daily-sales?day=2026-11-03')).status,401);
  const login=await req('/api/setup','POST',{setupToken,name:'판매 담당',username:'sales',password:randomUUID()});headers={...headers,cookie:login.cookie,'X-CSRF-Token':login.data.csrfToken};
@@ -17,6 +17,7 @@ test('daily manual sales: auth, complete options, conflict, date isolation, stoc
  const entries=officeCatalog.map(s=>({sku:s.id,sold:0,cancelled:0,refunded:0}));entries[0]={...entries[0],sold:3,cancelled:1,refunded:5};
  const body={day:'2026-11-03',siteId:site.id,version:0,entries};
  const races=await Promise.all([req('/api/daily-sales','PUT',body),req('/api/daily-sales','PUT',body)]);assert.deepEqual(races.map(r=>r.status).sort(),[200,409]);
+ const overview=await req('/api/daily-sales/summary');assert.equal(overview.status,200);assert.equal(overview.data.periods[0].sold,3);assert.equal(overview.data.periods[0].cancelled,6);assert.equal(overview.data.periods[0].rate,200);assert.equal((await req('/api/daily-sales/summary','GET',undefined,{})).status,401);
  assert.equal((await req('/api/daily-sales','PUT',{...body,version:1,entries:entries.slice(1)})).status,422);
  assert.equal((await req('/api/daily-sales','PUT',{...body,version:1,entries:entries.map((e,i)=>i===0?{...e,sold:-1}:e)})).status,422);
  assert.equal((await req('/api/daily-sales?day=2026-02-30')).status,422);
