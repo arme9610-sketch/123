@@ -1,3 +1,4 @@
+import {salesRoutes} from './lib/daily-sales.mjs';
 import {officeRoutes,officeSnapshot,officeLogs,validateOffice} from './lib/office-stock.mjs';
 import {generateRecurring} from './lib/recurring.mjs';
 import {seoulDate} from './lib/business-days.mjs';
@@ -140,10 +141,11 @@ export async function createApp({
   }
 
   const chat = chatRoutes({db,auth,json,changed,publish});
+  const sales = salesRoutes({db,auth,json,changed,publish});
   const office = officeRoutes({db,auth,json,changed,publish});
   const features = featureRoutes({db,auth,json,changed,publish});
   async function api(req, res, url) {
-    if (await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
+    if (await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
     if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized() });
     if (route === '/api/setup' && method === 'POST') {

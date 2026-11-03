@@ -143,3 +143,5 @@ dialog{width:490px;max-width:calc(100vw - 32px);max-height:90dvh;overflow-y:auto
 @media(hover:none){.manual-block>.manual-block-gutter,.manual-block:has(.manual-block:hover)>.manual-block-gutter{opacity:1}}
 
 .manual-document-meta select{width:160px;padding:8px 12px;font-size:12px;background:var(--surface-muted);border-color:transparent}.manual-group-tabs{margin-bottom:25px}@media(max-width:700px){.manual-document-meta select{width:120px}}
+
+.sales-panel{padding:24px;margin-bottom:24px}.sales-summary{padding:16px 0;font-size:17px}.sales-table input{width:100%;min-width:72px;max-width:120px;padding:10px;border:1px solid #d8dce5;border-radius:8px}.sales-table th:first-child{min-width:220px}.sales-save{position:sticky;bottom:0;background:var(--panel,#fff);padding:16px 0}.sales-table td{min-width:85px}.sales-panel tfoot{font-weight:700}.sales-panel .copy-row{max-width:480px;margin:16px 0}
