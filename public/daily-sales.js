@@ -1,3 +1,4 @@
+import {mergeSalesQuantities} from './sales-csv.js';
 import {createSalesImport} from './sales-import.js';
 import {officeCatalog} from './office-catalog.js';
 import {combineSalesEntry,salesTotals,rateLabel} from './sales-math.js';
@@ -42,7 +43,7 @@ export function createDailySales({api,escape:esc,toast,getUser}){
    importer??=createSalesImport({escape:esc,toast,onApply:(target,entries)=>{
     if(target.userId!==getUser()?.id||target.day!==day||target.siteId!==site||!document.querySelector('#daily-sales-root'))throw new Error('대상 날짜·사이트를 다시 선택하고 파일을 가져와 주세요.');
     const current=draft();if(current.version!==target.version||JSON.stringify(current.entries)!==target.signature)throw new Error('파일을 읽는 동안 입력 또는 저장된 기록이 바뀌었습니다. 파일을 다시 가져와 주세요.');
-    current.entries=entries;current.dirty=true;repaint();
+    current.entries=mergeSalesQuantities(current.entries,entries);current.dirty=true;repaint();
    }});
    importer.open(file,target);return;
   }
