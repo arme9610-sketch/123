@@ -1,9 +1,11 @@
+import {createSalesAnalytics} from './sales-analytics.js';
 import {mergeSalesQuantities} from './sales-csv.js';
 import {createSalesImport} from './sales-import.js';
 import {officeCatalog} from './office-catalog.js';
 import {combineSalesEntry,salesTotals,rateLabel} from './sales-math.js';
 const groups=[['에센셜','에센셜'],['카빈','카빈'],['파우치세트','파우치(단일)'],['메트론','메트론']];
 export function createDailySales({api,escape:esc,toast,getUser}){
+ const analytics=createSalesAnalytics({api,escape:esc,getUser});
  const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul'}).format(new Date());
  let day=today(),site='',group='에센셜',data=null,error='',loading=false,owner='',epoch=0,busy=false;let importer=null;const drafts=new Map();
  const key=()=>day+'|'+site;
@@ -19,6 +21,7 @@ export function createDailySales({api,escape:esc,toast,getUser}){
   if(!data&&!loading&&!error)queueMicrotask(load);
   const d=site&&data?draft():null,r=record();
   return `<div id="daily-sales-root"><div class="heading"><div><p class="eyebrow">DAILY SALES</p><h1>판매 · 취소/환불</h1><p class="subtitle">상품별로 판매와 취소·환불 수량을 입력하세요. 취소·환불률은 판매 수량 대비 비율입니다.</p></div></div>
+  ${analytics.render()}
   <section class="panel sales-panel"><div class="office-stock-filters"><label>기준 날짜<input id="sales-day" type="date" value="${day}" ${busy?'disabled':''}></label><button type="button" id="sales-today" ${busy?'disabled':''}>오늘</button><label>판매 사이트<select id="sales-site" ${busy?'disabled':''}>${(data?.sites||[]).map(s=>`<option value="${esc(s.id)}" ${s.id===site?'selected':''}>${esc(s.name)}</option>`).join('')}</select></label><button type="button" id="sales-reload" ${busy?'disabled':''}>최신 기록 확인</button><button type="button" id="sales-discard" ${busy?'disabled':''}>입력 버리고 불러오기</button></div>
   <p class="privacy">취소와 환불은 구분 없이 한 칸에 합산하세요. 취소·환불률 = 취소·환불 ÷ 판매 × 100 (판매 100개, 취소·환불 10개 → 10%). 판매가 0이면 —로 표시합니다.</p>
   <p role="alert" class="form-error">${esc(error)}</p>${loading?'<p role="status">기록을 불러오는 중…</p>':''}
@@ -53,15 +56,15 @@ export function createDailySales({api,escape:esc,toast,getUser}){
   if(e.target.closest('#sales-import-open'))document.querySelector('#sales-csv-file')?.click();
   const tab=e.target.closest('[data-sales-group]');if(tab){group=tab.dataset.salesGroup;repaint();document.querySelector(`[data-sales-group="${group}"]`)?.focus({preventScroll:true});}
   if(e.target.closest('#sales-today')){day=today();data=null;error='';repaint();}
-  if(e.target.closest('#sales-reload'))load();
+  if(e.target.closest('#sales-reload')){load();analytics.invalidate();}
   if(e.target.closest('#sales-discard')&&confirm('선택한 날짜·사이트의 저장하지 않은 입력을 버리고 최신 기록을 불러올까요?')){drafts.delete(key());load();}
  });
  document.addEventListener('submit',async e=>{
   if(e.target.id!=='sales-entry-form')return;e.preventDefault();if(busy)return;
   const selectedKey=key(),d=draft(),user=getUser()?.id;busy=true;error='';repaint();
-  try{const result=await api('/api/daily-sales',{method:'PUT',body:{day,siteId:site,version:d.version,entries:d.entries}});if(getUser()?.id!==user)return;drafts.delete(selectedKey);data.records=data.records.filter(r=>r.site_id!==site).concat(result.record);toast('전체 상품 수량을 저장했어요.');await load();}
+  try{const result=await api('/api/daily-sales',{method:'PUT',body:{day,siteId:site,version:d.version,entries:d.entries}});if(getUser()?.id!==user)return;drafts.delete(selectedKey);data.records=data.records.filter(r=>r.site_id!==site).concat(result.record);toast('전체 상품 수량을 저장했어요.');analytics.invalidate();await load();}
   catch(e){if(getUser()?.id===user)error=e.message;}finally{busy=false;repaint();}
  });
  window.addEventListener('beforeunload',e=>{if([...drafts.values()].some(d=>d.dirty)){e.preventDefault();e.returnValue='';}});
- return {render,clear(){importer?.clear();epoch++;drafts.clear();data=null;error='';loading=false;owner='';site='';busy=false;}};
+ return {render,clear(){analytics.clear();importer?.clear();epoch++;drafts.clear();data=null;error='';loading=false;owner='';site='';busy=false;}};
 }
