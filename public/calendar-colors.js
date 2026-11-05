@@ -8,5 +8,5 @@ export const calendarColorOptions=value=>calendarColors.map(color=>`<option valu
 
 export function calendarColorPicker(value,{name='calendarColor',itemId=null}={}){
  const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');
- return `<fieldset class="calendar-color-picker"><legend>표시 색상</legend><div class="calendar-color-choices">${calendarColors.map(color=>`<label class="calendar-color-choice"><input type="radio" name="${escape(name)}" value="${color.id}" ${color.id===(value||'default')?'checked':''} ${itemId===null?'':`data-calendar-color="${escape(itemId)}"`}><span class="calendar-color-chip calendar-chip-${color.id}" aria-hidden="true"></span><span>${color.label}</span></label>`).join('')}</div></fieldset>`;
+ return `<fieldset class="calendar-color-picker"><legend>표시 색상</legend><div class="calendar-color-choices">${calendarColors.map(color=>`<label class="calendar-color-choice" title="${color.label}"><input type="radio" aria-label="${color.label}" name="${escape(name)}" value="${color.id}" ${color.id===(value||'default')?'checked':''} ${itemId===null?'':`data-calendar-color="${escape(itemId)}"`}><span class="calendar-color-chip calendar-chip-${color.id}" aria-hidden="true"></span></label>`).join('')}</div></fieldset>`;
 }
