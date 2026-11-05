@@ -1,3 +1,4 @@
+import {validCalendarColor} from './public/calendar-colors.js';
 import {bootstrapOwner} from './lib/admin-schema.mjs';
 import {adminRoutes,manager,verifyInitialBackup,audit} from './lib/admin.mjs';
 import {salesRoutes} from './lib/daily-sales.mjs';
@@ -133,13 +134,15 @@ export async function createApp({
     if(typeof dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || dueDate < date || Number(dueDate.slice(0,4)) > 2200)throw new AppError(422,'마감일은 요청일 이후로 선택해 주세요.');
     const due=new Date(dueDate+'T12:00:00Z');
     if(!Number.isFinite(due.getTime()) || due.toISOString().slice(0,10)!==dueDate)throw new AppError(422,'올바른 마감일을 입력해 주세요.');
+    const calendarColor=body.calendarColor??'default';
+    if(!validCalendarColor(calendarColor))throw new AppError(422,'올바른 달력 색상을 선택해 주세요.');
     const warehouseDate=type==='inbound'?((body.warehouseDate==null||body.warehouseDate==='')?null:body.warehouseDate):null;
     if(warehouseDate!==null){
       if(typeof warehouseDate!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(warehouseDate)||warehouseDate<'2000-01-01'||warehouseDate>'2200-12-31')throw new AppError(422,'올바른 창고 입고 날짜를 입력해 주세요.');
       const warehouse=new Date(warehouseDate+'T12:00:00Z');
       if(!Number.isFinite(warehouse.getTime())||warehouse.toISOString().slice(0,10)!==warehouseDate)throw new AppError(422,'올바른 창고 입고 날짜를 입력해 주세요.');
     }
-    return { ...(type==='office'?validateOffice(body):{officeSku:null,officeOperation:null,officeBucket:null}), title, type, qty, ownerId, date, dueDate, priority, warehouseDate, note: note.trim(), tracking: tracking.trim() };
+    return { ...(type==='office'?validateOffice(body):{officeSku:null,officeOperation:null,officeBucket:null}), title, type, qty, ownerId, date, dueDate, priority, warehouseDate, calendarColor, note: note.trim(), tracking: tracking.trim() };
   }
   function checkVersion(body, current) {
     if (!Number.isSafeInteger(body.version) || body.version !== current.version) throw new AppError(409, '다른 직원이 먼저 수정했습니다. 최신 내용을 확인한 후 다시 시도해 주세요.');
@@ -247,7 +250,7 @@ export async function createApp({
       if (item.date < seoulDate(now()) || item.date > seoulDate(new Date(now().getTime()+366*86400000))) throw new AppError(422,'반복 시작일은 오늘부터 1년 이내로 선택해 주세요.');
       const id = randomUUID();
       await db.transaction(async connection => {
-        await connection.run('INSERT INTO recurring_tasks(id,title,owner_id,requester_id,start_date,note,priority,due_offset) VALUES(?,?,?,?,?,?,?,?)',[id,item.title,item.ownerId,user.id,item.date,item.note,item.priority,Math.round((Date.parse(item.dueDate)-Date.parse(item.date))/86400000)]);
+        await connection.run('INSERT INTO recurring_tasks(id,title,owner_id,requester_id,start_date,note,priority,due_offset,calendar_color) VALUES(?,?,?,?,?,?,?,?,?)',[id,item.title,item.ownerId,user.id,item.date,item.note,item.priority,Math.round((Date.parse(item.dueDate)-Date.parse(item.date))/86400000),item.calendarColor]);
         await generateRecurring(connection,seoulDate(now())); await changed(connection);
       });
       await publish(); return json(res,201,{id});
@@ -279,10 +282,20 @@ export async function createApp({
     if (route === '/api/items' && method === 'POST') {
       const user = await auth(req, true), body = await jsonBody(req), item = await validateItem(body), id = randomUUID();
       await db.transaction(async connection => {
-        await connection.run('INSERT INTO items(id,title,type,qty,owner_id,requester_id,date,note,tracking,priority,due_date,office_sku,office_operation,office_bucket,warehouse_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [id, item.title, item.type, item.qty, item.ownerId, user.id, item.date, item.note, item.tracking, item.priority, item.dueDate,item.officeSku,item.officeOperation,item.officeBucket,item.warehouseDate]);
+        await connection.run('INSERT INTO items(id,title,type,qty,owner_id,requester_id,date,note,tracking,priority,due_date,office_sku,office_operation,office_bucket,warehouse_date,calendar_color) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [id, item.title, item.type, item.qty, item.ownerId, user.id, item.date, item.note, item.tracking, item.priority, item.dueDate,item.officeSku,item.officeOperation,item.officeBucket,item.warehouseDate,item.calendarColor]);
         await changed(connection);
       });
       await publish(); return json(res, 201, { item: await getItem(id) });
+    }
+    const colorMatch=route.match(/^\/api\/items\/([^/]+)\/color$/);
+    if(colorMatch&&method==='PUT'){
+      const user=await auth(req,true),body=await jsonBody(req);
+      if(!validCalendarColor(body.calendarColor))throw new AppError(422,'올바른 달력 색상을 선택해 주세요.');
+      await db.transaction(async c=>{
+        const current=await getItem(colorMatch[1],c);checkVersion(body,current);
+        await c.run('UPDATE items SET calendar_color=?,version=version+1 WHERE id=? AND version=?',[body.calendarColor,current.id,current.version]);
+        await audit(c,user,'item_color_changed',current.id,{calendarColor:body.calendarColor});await changed(c);
+      });await publish();return json(res,200,{item:await getItem(colorMatch[1])});
     }
     const itemMatch = route.match(/^\/api\/items\/([^/]+)(\/toggle)?$/);
     if(itemMatch&&method==='DELETE'&&!itemMatch[2]){
@@ -302,10 +315,10 @@ export async function createApp({
         else {
           if (current.seriesId && (updated.type !== 'task' || updated.date !== current.date)) throw new AppError(422,'반복업무의 구분과 발생일은 변경할 수 없습니다.');
           if (current.done) throw new AppError(409, '완료를 취소한 후 수정해 주세요.');
-          await connection.run('UPDATE items SET title=?,type=?,qty=?,owner_id=?,date=?,note=?,tracking=?,priority=?,due_date=?,office_sku=?,office_operation=?,office_bucket=?,warehouse_date=?,version=version+1 WHERE id=? AND version=?', [updated.title, updated.type, updated.qty, updated.ownerId, updated.date, updated.note, updated.tracking, updated.priority, updated.dueDate, updated.officeSku,updated.officeOperation,updated.officeBucket,updated.warehouseDate,current.id, current.version]);
+          await connection.run('UPDATE items SET title=?,type=?,qty=?,owner_id=?,date=?,note=?,tracking=?,priority=?,due_date=?,office_sku=?,office_operation=?,office_bucket=?,warehouse_date=?,calendar_color=?,version=version+1 WHERE id=? AND version=?', [updated.title, updated.type, updated.qty, updated.ownerId, updated.date, updated.note, updated.tracking, updated.priority, updated.dueDate, updated.officeSku,updated.officeOperation,updated.officeBucket,updated.warehouseDate,body.calendarColor===undefined?current.calendarColor:updated.calendarColor,current.id, current.version]);
         }
         if (body.applyToSeries === true && current.seriesId && !itemMatch[2]) {
-          await connection.run('UPDATE recurring_tasks SET title=?,owner_id=?,note=?,priority=?,due_offset=?,version=version+1 WHERE id=? AND stopped_date IS NULL',[updated.title,updated.ownerId,updated.note,updated.priority,Math.round((Date.parse(updated.dueDate)-Date.parse(updated.date))/86400000),current.seriesId]);
+          await connection.run('UPDATE recurring_tasks SET title=?,owner_id=?,note=?,priority=?,due_offset=?,calendar_color=?,version=version+1 WHERE id=? AND stopped_date IS NULL',[updated.title,updated.ownerId,updated.note,updated.priority,Math.round((Date.parse(updated.dueDate)-Date.parse(updated.date))/86400000),body.calendarColor===undefined?current.calendarColor:updated.calendarColor,current.seriesId]);
         }
         await changed(connection);
         return getItem(current.id, connection);

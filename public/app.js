@@ -1,3 +1,4 @@
+import {calendarColorClass} from './calendar-colors.js';
 import {createSalesDashboard} from './sales-dashboard.js';
 import {calendarEntries,createCalendarDay} from './calendar.js';
 import {createAdministration} from './admin.js';
@@ -238,13 +239,13 @@ function calendar(){
  const start=new Date(month);start.setDate(1-start.getDay());const events=calendarEntries(state.items);
  return `<div class="weekdays">${['일','월','화','수','목','금','토'].map(w=>`<span>${w}</span>`).join('')}</div><div class="calendar">${Array.from({length:42},(_,n)=>{
   const d=new Date(start);d.setDate(d.getDate()+n);const date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,entries=events.filter(e=>e.date===date);
-  return `<div class="day ${d.getMonth()!==month.getMonth()?'outside':''}" role="button" tabindex="0" data-calendar-day="${date}" aria-label="${date}, 일정 ${entries.length}개, 일정 보기 및 추가"><span class="day-number ${date===today?'is-today':''}">${d.getDate()}</span>${entries.map(({item:i,milestone})=>`<span class="event ${types[i.type][1]} ${i.done?'finished':''}" title="${esc((milestone?milestone+' · ':'')+i.title)}">${milestone?`<b>${esc(milestone)}</b> · `:''}${esc(i.title)}${i.type==='inbound'?` · ${i.qty}개`:''}</span>`).join('')}</div>`;
+  return `<div class="day ${d.getMonth()!==month.getMonth()?'outside':''}" role="button" tabindex="0" data-calendar-day="${date}" aria-label="${date}, 일정 ${entries.length}개, 일정 보기 및 추가"><span class="day-number ${date===today?'is-today':''}">${d.getDate()}</span>${entries.map(({item:i,milestone})=>`<span class="event ${types[i.type][1]} ${calendarColorClass(i.calendarColor)} ${i.done?'finished':''}" title="${esc((milestone?milestone+' · ':'')+i.title)}">${milestone?`<b>${esc(milestone)}</b> · `:''}${esc(i.title)}${i.type==='inbound'?` · ${i.qty}개`:''}</span>`).join('')}</div>`;
  }).join('')}</div>`;
 }
 function calendarAgenda(){
  const prefix=`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}`;
  const entries=calendarEntries(state.items).filter(e=>e.date.startsWith(prefix)).sort((a,b)=>a.date.localeCompare(b.date)||a.item.title.localeCompare(b.item.title,'ko'));
- return `<div class="table-wrap"><table><thead><tr><th>날짜</th><th>구분</th><th>일정 / 내용</th><th>상태</th><th>관리</th></tr></thead><tbody>${entries.map(({item:i,date,milestone})=>`<tr><td><button type="button" data-calendar-day="${date}">${esc(date)}</button></td><td>${esc(milestone||types[i.type][0])}</td><td><button type="button" data-edit="${i.id}">${esc(i.title)}</button></td><td>${i.done?'완료':'예정'}</td><td><button type="button" class="danger-button" data-delete-item="${i.id}">삭제</button></td></tr>`).join('')}</tbody></table>${entries.length?'':empty('등록된 일정이 없습니다.')}</div>`;
+ return `<div class="table-wrap"><table><thead><tr><th>날짜</th><th>구분</th><th>일정 / 내용</th><th>상태</th><th>관리</th></tr></thead><tbody>${entries.map(({item:i,date,milestone})=>`<tr><td><button type="button" data-calendar-day="${date}">${esc(date)}</button></td><td>${esc(milestone||types[i.type][0])}</td><td><button type="button" class="calendar-item-title ${calendarColorClass(i.calendarColor)}" data-edit="${i.id}">${esc(i.title)}</button></td><td>${i.done?'완료':'예정'}</td><td><button type="button" class="danger-button" data-delete-item="${i.id}">삭제</button></td></tr>`).join('')}</tbody></table>${entries.length?'':empty('등록된 일정이 없습니다.')}</div>`;
 }
 
 // Preserve unsent messages and invitations when another teammate changes shared data.
@@ -292,6 +293,7 @@ function openForm(type = 'task', date = today, id = null) {
   form.elements.dueDate.value = item?.dueDate || item?.date || date;
   form.elements.dueDate.min = form.elements.date.value;
   form.elements.priority.value = item?.priority || 'normal';
+  form.elements.calendarColor.value=item?.calendarColor||'default';
   form.elements.warehouseDate.value=item?.warehouseDate||'';
   form.elements.officeSku.innerHTML=officeCatalog.map(s=>`<option value="${s.id}">${esc(s.label)}</option>`).join('');
   form.elements.officeSku.value=item?.officeSku||officeCatalog[0].id;
@@ -717,5 +719,9 @@ async function removeItem(id,expectedVersion){
   await refreshState();if(page==='아카이브')await loadCollection(page);toast('일정·업무를 삭제했어요.');return true;
  }catch(error){toast(error.message);if(error.status===409)await refreshState().catch(()=>{});return false;}
 }
-const calendarUI=createCalendarDay({escape:esc,getItems:()=>state.items,add:date=>openForm('meeting',date),edit:id=>{const item=state.items.find(i=>i.id===id);if(item?.done)taskDetails.open(id);else if(item)openForm(item.type,item.date,id);},remove:removeItem});
+const calendarUI=createCalendarDay({escape:esc,getItems:()=>state.items,add:date=>openForm('meeting',date),edit:id=>{const item=state.items.find(i=>i.id===id);if(item?.done)taskDetails.open(id);else if(item)openForm(item.type,item.date,id);},remove:removeItem,setColor:async(id,calendarColor)=>{
+ const item=state.items.find(i=>i.id===id);if(!item)return false;
+ try{await api('/api/items/'+encodeURIComponent(id)+'/color',{method:'PUT',body:{calendarColor,version:item.version}});await refreshState();toast('달력 색상을 변경했어요.');return true;}
+ catch(error){toast(error.message);if(error.status===409)await refreshState().catch(()=>{});return false;}
+}});
 const taskDetails = createTaskDetails({api,escape:esc,getUser:()=>currentUser,getItem:id=>state.items.find(i=>i.id===id),refresh:refreshState,edit:item=>openForm(item.type,item.date,item.id),remove:removeItem,stop:stopSeries,toast});
