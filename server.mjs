@@ -1,3 +1,4 @@
+import {initializeContributions,awardContribution,contributionSnapshot} from './lib/contributions.mjs';
 import {validCalendarColor} from './public/calendar-colors.js';
 import {bootstrapOwner} from './lib/admin-schema.mjs';
 import {adminRoutes,manager,verifyInitialBackup,audit} from './lib/admin.mjs';
@@ -33,7 +34,7 @@ export async function createApp({
     throw Object.assign(new Error('DATABASE_URL is required for this deployment.'), { code: 'DAYON_CONFIG' });
   }
   const db = await openStorage({ dataDir, databaseUrl });
-  try{await bootstrapOwner(db);}catch(error){await db.close();throw error;}
+  try{await bootstrapOwner(db);await initializeContributions(db);}catch(error){await db.close();throw error;}
   try{await verifyInitialBackup(db);}catch(error){console.error('Initial backup rehearsal failed:',error.code||error.name);}
   const streams = new Set(), attempts = new Map();
   const initialized = async (connection = db) => !!(await connection.get('SELECT 1 FROM users LIMIT 1'));
@@ -150,8 +151,8 @@ export async function createApp({
 
   const administration=adminRoutes({db,auth,json,changed,publish});
   const chat = chatRoutes({db,auth,json,changed,publish});
-  const sales = salesRoutes({db,auth,json,changed,publish,today:()=>seoulDate(now())});
-  const office = officeRoutes({db,auth,json,changed,publish});
+  const sales = salesRoutes({db,auth,json,changed,publish,now,today:()=>seoulDate(now())});
+  const office = officeRoutes({db,auth,json,changed,publish,now});
   const features = featureRoutes({db,auth,json,changed,publish});
   async function api(req, res, url) {
     if (await administration(req,res,url) || await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
@@ -211,6 +212,22 @@ export async function createApp({
       for (const entry of streams) if (entry.hash === user.token_hash) { entry.res.end(); streams.delete(entry); }
       res.setHeader('Set-Cookie', `moa_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookie ? '; Secure' : ''}`);
       return json(res, 200, { ok: true });
+    }
+    if(route==='/api/contributions/manual'&&method==='POST'){
+      const user=await auth(req,true),body=await jsonBody(req),description=requireText(body.description,'진행한 업무',500);
+      if(typeof body.requestId!=='string'||!/^[-a-f0-9]{36}$/.test(body.requestId))throw new AppError(422,'추가 창을 다시 열어 등록해 주세요.');
+      if(body.xp!==undefined&&body.xp!==1)throw new AppError(422,'업무 1건당 경험치는 1점입니다.');
+      const itemId='manual:'+user.id+':'+body.requestId;
+      await db.transaction(async c=>{
+        const before=await c.get('SELECT item_title FROM contribution_awards WHERE item_id=?',[itemId]);
+        if(before){if(before.item_title!==description)throw new AppError(409,'이미 처리된 등록입니다. 새 창에서 다시 등록해 주세요.');return;}
+        await awardContribution(c,{id:itemId,title:description,type:'manual',ownerId:user.id,owner:user.name,done:false},user,now());await changed(c);
+      });await publish();return json(res,201,{ok:true,xp:1});
+    }
+    if(route==='/api/contributions'&&method==='GET'){
+      await auth(req);const month=url.searchParams.get('month')||seoulDate(now()).slice(0,7),userId=url.searchParams.get('userId')||'',rawOffset=url.searchParams.get('offset')||'0';
+      if(!/^(20\d{2}|21\d{2}|2200)-(0[1-9]|1[0-2])$/.test(month)||!/^\d{1,7}$/.test(rawOffset))throw new AppError(422,'올바른 조회 월을 선택해 주세요.');
+      const result=await db.transaction(c=>contributionSnapshot(c,{month,userId,offset:Number(rawOffset)}),{readOnly:true});return json(res,200,result);
     }
     if (route === '/api/state' && method === 'GET') {
       const user=await auth(req);
@@ -307,11 +324,16 @@ export async function createApp({
       });await publish();return json(res,200,{ok:true});
     }
     if (itemMatch && ((method === 'PUT' && !itemMatch[2]) || (method === 'POST' && itemMatch[2]))) {
-      await auth(req, true);
+      const actor=await auth(req, true);
       const body = await jsonBody(req), updated = itemMatch[2] ? null : await validateItem(body);
       const item = await db.transaction(async connection => {
         const current = await getItem(itemMatch[1], connection); checkVersion(body, current);
-        if (itemMatch[2]) await connection.run('UPDATE items SET done=?,completed_at=?,version=version+1 WHERE id=? AND version=?', [current.done ? 0 : 1, current.done ? null : new Date().toISOString(), current.id, current.version]);
+        if (itemMatch[2]) {
+          const completedAt=now();
+          const result=await connection.run('UPDATE items SET done=?,completed_at=?,version=version+1 WHERE id=? AND version=?',[current.done?0:1,current.done?null:completedAt.toISOString(),current.id,current.version]);
+          if(result.changes!==1)throw new AppError(409,'다른 직원이 먼저 수정했습니다. 최신 내용을 확인해 주세요.');
+          await awardContribution(connection,current,actor,completedAt);
+        }
         else {
           if (current.seriesId && (updated.type !== 'task' || updated.date !== current.date)) throw new AppError(422,'반복업무의 구분과 발생일은 변경할 수 없습니다.');
           if (current.done) throw new AppError(409, '완료를 취소한 후 수정해 주세요.');

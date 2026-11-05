@@ -41,3 +41,13 @@ test('home sales cards show quantity, cancellation and saved-price revenue, with
   assert.ok(dashboard.render().includes('<dd>—</dd>'));assert.ok(!dashboard.render().includes('NaN'));
  }finally{globalThis.document=original;}
 });
+
+test('donut alone groups options after the top ten without changing rankings or its full-sales denominator',async()=>{
+ const {salesShares,topDonutShares,salesShareDonut}=await import('../public/sales-share.js');
+ const shares=salesShares(Array.from({length:15},(_,i)=>({id:'option-'+i,label:'옵션 '+i,sold:15-i})));
+ const chart=topDonutShares(shares);assert.equal(shares.rows.length,15);assert.equal(chart.rows.length,11);assert.equal(chart.total,120);
+ assert.equal(chart.rows.at(-1).label,'기타 (5개 옵션)');assert.equal(chart.rows.at(-1).sold,15);assert.equal(chart.rows.at(-1).share,12.5);
+ assert.equal(chart.rows[0].sold,15);assert.equal(chart.rows[0].share,12.5);assert.equal(chart.rows.reduce((sum,row)=>sum+row.sold,0),120);
+ assert.ok(Math.abs(chart.rows.reduce((sum,row)=>sum+row.share,0)-100)<1e-9);
+ const html=salesShareDonut(shares,String);assert.equal((html.match(/data-sales-share /g)||[]).length,11);assert.ok(html.includes('기타 (5개 옵션)'));assert.ok(html.includes('data-percent="12.5%"'));
+});

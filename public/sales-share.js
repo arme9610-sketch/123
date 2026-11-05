@@ -19,12 +19,18 @@ export function salesShareLayout(rows){
  }
  return {labels,height,cy};
 }
-export function salesShareDonut({total,rows},escape){
+export function topDonutShares({total,rows}){
+ if(rows.length<=10)return {total,rows};
+ const visible=rows.slice(0,10),rest=rows.slice(10),sold=rest.reduce((sum,row)=>sum+row.sold,0),share=total?sold/total*100:0;
+ return {total,rows:[...visible,{id:'other',label:`기타 (${rest.length}개 옵션)`,sold,share,offset:visible.reduce((sum,row)=>sum+row.share,0),color:'#94a3b8'}]};
+}
+export function salesShareDonut(shares,escape){
+ const {total,rows}=topDonutShares(shares);
  const {labels,height,cy}=salesShareLayout(rows),cx=420,r=110;
  return `<div class="sales-share-donut"><svg viewBox="0 0 840 ${height}" role="group" aria-label="전체 판매 ${total}개 중 옵션별 판매 수량 비중"><circle class="sales-share-base" cx="${cx}" cy="${cy}" r="${r}"/>${labels.map(o=>{
   const right=o.dx>=0,x=right?590:250,elbow=right?568:272,tipX=Math.max(10,Math.min(506,cx+o.dx*r-162)),tipY=Math.max(8,Math.min(height-76,cy+o.dy*r-76));
   return `<g class="sales-share-option" data-sales-share data-label="${escape(o.label)}" data-sold="${o.sold}" data-percent="${shareLabel(o.share)}" data-tooltip-x="${tipX}" data-tooltip-y="${tipY}" tabindex="0" role="img" aria-label="${escape(o.label)} · ${o.sold}개 / ${total}개 (${shareLabel(o.share)})"><circle class="sales-share-slice" cx="${cx}" cy="${cy}" r="${r}" pathLength="100" fill="none" stroke="${o.color}" stroke-width="44" stroke-dasharray="${o.share} ${100-o.share}" stroke-dashoffset="${-o.offset}" transform="rotate(-90 ${cx} ${cy})"/><polyline class="sales-share-leader" points="${cx+o.dx*134},${cy+o.dy*134} ${elbow},${o.labelY} ${x},${o.labelY}"/><text class="sales-share-label" x="${right?x+7:x-7}" y="${o.labelY+4}" text-anchor="${right?'start':'end'}">${escape(o.label)}</text></g>`;
- }).join('')}<text class="sales-share-total" x="${cx}" y="${cy-3}" text-anchor="middle">${total.toLocaleString('ko-KR')}개</text><text class="sales-share-caption" x="${cx}" y="${cy+22}" text-anchor="middle">전체 판매</text><g class="sales-share-tooltip" visibility="hidden" pointer-events="none" aria-hidden="true"><rect width="324" height="68" rx="8"/><text class="sales-share-tooltip-label" x="14" y="25"></text><text class="sales-share-tooltip-value" x="14" y="50"></text></g></svg><p class="sales-share-hint">옵션에 마우스를 올리면 판매 수량과 비율이 표시됩니다. 모바일에서는 눌러서 확인하세요.</p></div>`;
+ }).join('')}<text class="sales-share-total" x="${cx}" y="${cy-3}" text-anchor="middle">${total.toLocaleString('ko-KR')}개</text><text class="sales-share-caption" x="${cx}" y="${cy+22}" text-anchor="middle">전체 판매</text><g class="sales-share-tooltip" visibility="hidden" pointer-events="none" aria-hidden="true"><rect width="324" height="68" rx="8"/><text class="sales-share-tooltip-label" x="14" y="25"></text><text class="sales-share-tooltip-value" x="14" y="50"></text></g></svg><p class="sales-share-hint">판매 수량 상위 10개 옵션 · 나머지는 기타로 합산합니다. 옵션에 마우스를 올리면 판매 수량과 비율이 표시됩니다. 모바일에서는 눌러서 확인하세요.</p></div>`;
 }
 export function bindSalesShareTooltip(root){
  const find=target=>target?.closest?.('[data-sales-share]');
