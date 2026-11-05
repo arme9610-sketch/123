@@ -1,4 +1,4 @@
-import {calendarColorClass} from './calendar-colors.js';
+import {calendarColorClass,calendarColorPicker} from './calendar-colors.js';
 import {createSalesDashboard} from './sales-dashboard.js';
 import {calendarEntries,createCalendarDay} from './calendar.js';
 import {createAdministration} from './admin.js';
@@ -293,7 +293,7 @@ function openForm(type = 'task', date = today, id = null) {
   form.elements.dueDate.value = item?.dueDate || item?.date || date;
   form.elements.dueDate.min = form.elements.date.value;
   form.elements.priority.value = item?.priority || 'normal';
-  form.elements.calendarColor.value=item?.calendarColor||'default';
+  $('#calendar-color-field').innerHTML=calendarColorPicker(item?.calendarColor);
   form.elements.warehouseDate.value=item?.warehouseDate||'';
   form.elements.officeSku.innerHTML=officeCatalog.map(s=>`<option value="${s.id}">${esc(s.label)}</option>`).join('');
   form.elements.officeSku.value=item?.officeSku||officeCatalog[0].id;
