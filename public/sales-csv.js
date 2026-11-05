@@ -35,7 +35,7 @@ export function parseCsv(text,{columns=null}={}){
  if(quoted)throw new Error('CSV의 닫히지 않은 따옴표를 확인해 주세요.');
  if(hasContent||column||field)pushRow();return rows;
 }
-function quantity(value,heading,row){
+export function quantity(value,heading,row){
  const raw=String(value).trim();
  if(!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(raw))throw new Error(`${row}번째 데이터 행의 ${heading}은 0 이상의 정수여야 합니다.`);
  const n=Number(raw.replaceAll(',',''));
