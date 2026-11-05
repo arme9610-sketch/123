@@ -16,3 +16,13 @@ test('fixed prices include pouch; color option ranks use revenue and entered day
  assert.equal(p.revenue,870800);assert.equal(p.refundAmount,167900);assert.equal(p.netRevenue,702900);assert.equal(p.averageRevenue,435400);
  assert.equal(p.optionRankings[0].id,'essential-28-silver');assert.equal(p.optionRankings[0].rank,1);assert.equal(p.optionRankings[0].averageRevenue,208500);assert.equal(p.optionRankings[1].id,'essential-20-black');assert.equal(p.optionRankings[2].price,28900);assert.equal(p.optionRankings.at(-1).rank,null);
 });
+
+test('sales share donut uses all quantities as denominator and ranks by units rather than price',async()=>{
+ const {salesShares,salesShareDonut}=await import('../public/sales-share.js');
+ const input=[{id:'essential-20-black',label:'수량 1위',sold:12,revenue:1188000},...Array.from({length:6},(_,i)=>({id:'option-'+i,label:'다른 옵션 '+i,sold:11,revenue:2000000})),{id:'pouch-set',label:'파우치',sold:2,revenue:57800}];
+ const shares=salesShares(input);assert.equal(shares.total,80);assert.equal(shares.rows[0].sold,12);assert.equal(shares.rows[0].rank,1);assert.equal(shares.rows[0].share,15);assert.equal(shares.rows[1].rank,2);assert.equal(shares.rows.at(-1).rank,8);
+ assert.ok(Math.abs(shares.rows.reduce((sum,o)=>sum+o.share,0)-100)<1e-9);
+ const svg=salesShareDonut(shares,String);assert.ok(svg.includes('stroke-dasharray="15 85"'));assert.ok(svg.includes('12개 / 80개 (15%)'));assert.equal((svg.match(/class="sales-share-slice"/g)||[]).length,8);
+ const zero=salesShares([{id:'pouch-set',sold:0}]);assert.equal(zero.total,0);assert.equal(zero.rows.length,0);assert.ok(!salesShareDonut(zero,String).includes('NaN'));
+ const single=salesShares([{id:'pouch-set',label:'파우치',sold:1}]);assert.equal(single.rows[0].share,100);
+});
