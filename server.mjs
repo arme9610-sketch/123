@@ -1,3 +1,4 @@
+import {worklistRoutes,worklistSnapshot} from './lib/user-worklists.mjs';
 import {initializeContributions,awardContribution,contributionSnapshot} from './lib/contributions.mjs';
 import {validCalendarColor} from './public/calendar-colors.js';
 import {bootstrapOwner} from './lib/admin-schema.mjs';
@@ -151,11 +152,12 @@ export async function createApp({
 
   const administration=adminRoutes({db,auth,json,changed,publish});
   const chat = chatRoutes({db,auth,json,changed,publish});
+  const worklists=worklistRoutes({db,auth,json,changed,publish,now});
   const sales = salesRoutes({db,auth,json,changed,publish,now,today:()=>seoulDate(now())});
   const office = officeRoutes({db,auth,json,changed,publish,now});
   const features = featureRoutes({db,auth,json,changed,publish});
   async function api(req, res, url) {
-    if (await administration(req,res,url) || await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
+    if (await worklists(req,res,url) || await administration(req,res,url) || await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
     if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized(),ownerConfigured:!!(await db.get("SELECT user_id FROM account_access WHERE access_role='owner' AND active=1")),ownerAssignmentComplete:!!(await db.get("SELECT value FROM metadata WHERE key='owner_gijeong1312_v1'")),backupRestoreVerified:!!(await db.get("SELECT value FROM metadata WHERE key='initial_backup_restore_verified_v1'")) });
     if (route === '/api/setup' && method === 'POST') {
@@ -238,7 +240,7 @@ export async function createApp({
         const messages = (await connection.all(db.messageQuery)).map(messageRow), stock = Object.create(null);
         for (const item of items) if (item.type === 'inbound' && item.done) stock[item.title] = (stock[item.title] || 0) + item.qty;
         const recurring = await connection.all('SELECT s.*,o.name owner,r.name requester FROM recurring_tasks s JOIN users o ON o.id=s.owner_id JOIN users r ON r.id=s.requester_id ORDER BY s.start_date,s.id');
-        return {currentUser:publicUser(user),officeStockLogs:await officeLogs(connection),officeStock:await officeSnapshot(connection), recurring: recurring.map(s => ({id:s.id,title:s.title,ownerId:s.owner_id,owner:s.owner,requesterId:s.requester_id,requester:s.requester,startDate:s.start_date,stoppedDate:s.stopped_date,version:s.version})), users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
+        return {worklists:await worklistSnapshot(connection),currentUser:publicUser(user),officeStockLogs:await officeLogs(connection),officeStock:await officeSnapshot(connection), recurring: recurring.map(s => ({id:s.id,title:s.title,ownerId:s.owner_id,owner:s.owner,requesterId:s.requester_id,requester:s.requester,startDate:s.start_date,stoppedDate:s.stopped_date,version:s.version})), users, items, messages, stock, chat:await chatStatus(connection,db.kind,user.id), revision: await revision(connection) };
       }, { readOnly: true });
       return json(res, 200, result);
     }

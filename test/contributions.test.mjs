@@ -6,18 +6,22 @@ import {createApp} from '../server.mjs';
 import {contributionLevel} from '../lib/contributions.mjs';
 import {backupSnapshot,rehearseBackup,encryptBackup,decryptBackup} from '../lib/backup.mjs';
 import {openStorage} from '../lib/database.mjs';
+import {levelStartXP,contributionTier} from '../public/contribution-tiers.js';
 const password='Contribution-password-123',setupToken='contribution-fixture-key';
 
-test('levels use 1,2,3 experience, all title boundaries, and cap at level 50',()=>{
+test('levels use fixed tier requirements, all title boundaries, and cap at level 50',()=>{
  for(let level=1;level<=50;level++){
-  const xp=level*(level-1)/2,result=contributionLevel(xp);
-  assert.equal(result.level,level);assert.equal(result.required,level===50?null:level);
+  const xp=levelStartXP(level),result=contributionLevel(xp);
+  assert.equal(result.level,level);assert.equal(result.required,level===50?null:contributionTier(level).required);
   if(level>1)assert.equal(contributionLevel(xp-1).level,level-1);
  }
- assert.equal(contributionLevel(0).title,'업무초보자');assert.equal(contributionLevel(45).title,'업무숙련자');
- assert.equal(contributionLevel(190).title,'업무베테랑');assert.equal(contributionLevel(435).title,'업무마스터');assert.equal(contributionLevel(780).title,'업무의 신');
- assert.equal(contributionLevel(100000).level,50);assert.equal(contributionLevel(1225).required,null);
- assert.deepEqual([0,1,2,3,5,6].map(xp=>contributionLevel(xp).level),[1,2,2,3,3,4]);
+ assert.deepEqual([1,9,10,19,20,29,30,39,40,49,50].map(l=>contributionLevel(levelStartXP(l)).required),[1,1,2,2,3,3,4,4,5,5,null]);
+ assert.deepEqual([10,20,30,40,50].map(levelStartXP),[9,29,59,99,149]);
+ assert.deepEqual([0,9,29,59,99].map(xp=>contributionLevel(xp).tierName),['업무초보자','숙련자','베테랑','마스터','신']);
+ assert.equal(contributionLevel(0).title,'업무초보자');assert.equal(contributionLevel(9).title,'업무숙련자');
+ assert.equal(contributionLevel(29).title,'업무베테랑');assert.equal(contributionLevel(59).title,'업무마스터');assert.equal(contributionLevel(99).title,'업무의 신');
+ assert.equal(contributionLevel(100000).level,50);assert.equal(contributionLevel(149).required,null);
+ assert.deepEqual([0,1,2,3,5,6].map(xp=>contributionLevel(xp).level),[1,2,3,4,6,7]);
 });
 async function fixture(t){
  const dir=await mkdtemp('/tmp/dayon-contribution-');let app,base,clock=new Date('2026-11-30T14:59:00Z');
@@ -51,7 +55,7 @@ test('completion credits the assignee, not clicker or quantity; cancellations, r
  report=(await f.req('/api/contributions')).data;assert.equal(report.members.find(u=>u.id===f.worker.user.id).xp,1);
  const self=await f.create(f.owner.user.id);await f.toggle(self);report=(await f.req('/api/contributions')).data;assert.equal(report.leaders.length,2);
  for(const type of ['office','shipment','inbound','meeting'])await f.toggle(await f.create(f.owner.user.id,type));
- report=(await f.req('/api/contributions')).data;assert.equal(report.members.find(u=>u.id===f.owner.user.id).xp,5);assert.equal(report.members[0].level,3);
+ report=(await f.req('/api/contributions')).data;assert.equal(report.members.find(u=>u.id===f.owner.user.id).xp,5);assert.equal(report.members[0].level,6);
  const filtered=(await f.req('/api/contributions?userId='+f.worker.user.id)).data;assert.ok(filtered.logs.every(log=>log.owner_id===f.worker.user.id));assert.equal(filtered.logs.length,1);
  assert.equal((await f.req('/api/contributions?userId=unknown')).status,422);
  await f.restart();assert.equal((await f.req('/api/contributions')).data.members[0].xp,5);

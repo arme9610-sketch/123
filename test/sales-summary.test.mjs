@@ -51,3 +51,15 @@ test('donut alone groups options after the top ten without changing rankings or 
  assert.ok(Math.abs(chart.rows.reduce((sum,row)=>sum+row.share,0)-100)<1e-9);
  const html=salesShareDonut(shares,String);assert.equal((html.match(/data-sales-share /g)||[]).length,11);assert.ok(html.includes('기타 (5개 옵션)'));assert.ok(html.includes('data-percent="12.5%"'));
 });
+
+test('yesterday versus two days ago compares option units and excludes sites missing either day',async()=>{
+ const {compareDailySales}=await import('../public/sales-changes.js');
+ const sites=[{id:'a',name:'카페24'},{id:'b',name:'쿠팡윙'}],current='2026-11-04',previous='2026-11-03';
+ const entries=(red,pouch)=>[{sku:'cabin-20-red',sold:red},{sku:'pouch-set',sold:pouch}];
+ const report=compareDailySales([{day:previous,site_id:'a',entries:entries(12,0)},{day:current,site_id:'a',entries:entries(7,10)},{day:current,site_id:'b',entries:entries(100,100)}],sites,current,previous);
+ assert.equal(report.comparedSites.length,1);assert.equal(report.currentTotal,17);assert.equal(report.previousTotal,12);
+ const red=report.options.find(o=>o.id==='cabin-20-red');assert.equal(red.delta,-5);assert.equal(red.previous,12);assert.equal(red.current,7);assert.equal(red.percent,-41.7);
+ const pouch=report.options.find(o=>o.id==='pouch-set');assert.equal(pouch.delta,10);assert.equal(pouch.percent,null);
+ assert.equal(compareDailySales([],sites,current,previous).comparedSites.length,0);
+ const zero=compareDailySales([{day:previous,site_id:'a',entries:entries(0,0)},{day:current,site_id:'a',entries:entries(0,0)}],sites,current,previous);assert.equal(zero.comparedSites.length,1);assert.ok(zero.options.every(o=>o.delta===0));
+});

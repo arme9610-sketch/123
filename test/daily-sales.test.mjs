@@ -17,6 +17,8 @@ test('daily manual sales: auth, complete options, conflict, date isolation, stoc
  const entries=officeCatalog.map(s=>({sku:s.id,sold:0,cancelled:0,refunded:0}));entries[0]={...entries[0],sold:3,cancelled:1,refunded:5};
  const body={day:'2026-11-03',siteId:site.id,version:0,entries};
  const races=await Promise.all([req('/api/daily-sales','PUT',body),req('/api/daily-sales','PUT',body)]);assert.deepEqual(races.map(r=>r.status).sort(),[200,409]);
+ assert.equal((await req('/api/daily-sales/changes','GET',undefined,{})).status,401);
+ const comparison=await req('/api/daily-sales/changes');assert.equal(comparison.status,200);assert.equal(comparison.data.currentDay,'2026-11-03');assert.equal(comparison.data.previousDay,'2026-11-02');assert.equal(comparison.data.comparedSites.length,0);
  const overview=await req('/api/daily-sales/summary');assert.equal(overview.status,200);assert.equal(overview.data.periods[0].sold,3);assert.equal(overview.data.periods[0].cancelled,6);assert.equal(overview.data.periods[0].rate,200);assert.equal((await req('/api/daily-sales/summary','GET',undefined,{})).status,401);
  assert.equal((await req('/api/daily-sales','PUT',{...body,version:1,entries:entries.slice(1)})).status,422);
  assert.equal((await req('/api/daily-sales','PUT',{...body,version:1,entries:entries.map((e,i)=>i===0?{...e,sold:-1}:e)})).status,422);
