@@ -1,7 +1,8 @@
-import {salesShares,shareLabel,salesShareDonut} from './sales-share.js';
+import {salesShares,shareLabel,salesShareDonut,bindSalesShareTooltip} from './sales-share.js';
 const money=n=>n===null?'—':Math.round(n).toLocaleString('ko-KR')+'원';
 const quantity=n=>n===null?'—':n.toLocaleString('ko-KR',{maximumFractionDigits:1});
 export function createSalesAnalytics({api,escape:esc,getUser}){
+ bindSalesShareTooltip(document);
  let data=null,error='',loading=false,request=0,owner='',stamp=0,period=1,expanded=false;
  function repaint(){const root=document.querySelector('#sales-analytics');if(root)root.outerHTML=render();}
  async function load(){if(loading)return;const ticket=++request,user=getUser()?.id;loading=true;error='';try{const result=await api('/api/daily-sales/summary');if(ticket!==request||user!==getUser()?.id)return;data=result;stamp=Date.now();}catch(e){if(ticket===request)error=e.message;}finally{if(ticket===request){loading=false;repaint();}}}

@@ -26,3 +26,18 @@ test('sales share donut uses all quantities as denominator and ranks by units ra
  const zero=salesShares([{id:'pouch-set',sold:0}]);assert.equal(zero.total,0);assert.equal(zero.rows.length,0);assert.ok(!salesShareDonut(zero,String).includes('NaN'));
  const single=salesShares([{id:'pouch-set',label:'파우치',sold:1}]);assert.equal(single.rows[0].share,100);
 });
+
+test('home sales cards show quantity, cancellation and saved-price revenue, with missing days kept empty',async()=>{
+ const {createSalesDashboard}=await import('../public/sales-dashboard.js');
+ const original=globalThis.document,root={outerHTML:''};
+ globalThis.document={querySelector:()=>root,addEventListener(){}};
+ try{
+  const source=summarizeSales([record('2026-11-03',12,2)],'2026-11-04');
+  const dashboard=createSalesDashboard({api:async()=>source,escape:String,getUser:()=>({id:'tester'}),getToday:()=>source.today});
+  dashboard.render();await new Promise(resolve=>setTimeout(resolve,0));const html=dashboard.render();
+  assert.ok(html.includes('<h2>판매량</h2>'));assert.ok(html.includes('판매 개수'));assert.ok(html.includes('취소·환불'));assert.ok(html.includes('매출'));
+  assert.ok(html.includes(Math.round(source.periods[0].revenue).toLocaleString('ko-KR')+'원'));
+  dashboard.clear();source.periods=source.periods.map(p=>({...p,enteredDays:0}));dashboard.render();await new Promise(resolve=>setTimeout(resolve,0));
+  assert.ok(dashboard.render().includes('<dd>—</dd>'));assert.ok(!dashboard.render().includes('NaN'));
+ }finally{globalThis.document=original;}
+});
