@@ -7,7 +7,7 @@ export function createUserWorklists({api,escape:esc,getState,getUser,refresh,toa
    const rank=user=>order.includes(user.name)?order.indexOf(user.name):order.length;
    return rank(a)-rank(b)||a.name.localeCompare(b.name,'ko');
   });
-  return `<section class="home-worklists" aria-labelledby="home-worklists-title"><div class="worklists-heading"><div><p class="eyebrow">A GOOD START, TOGETHER.</p><h2 id="home-worklists-title">우리의 하루, 이렇게 시작해요.</h2><p>출근 후 확인할 기본 업무를 카드에 적어 두세요.</p></div><span>${users.length}명의 하루</span></div><div class="worklist-grid">${users.map(user=>{
+  return `<section class="home-worklists" aria-label="사용자별 출근 후 할 일"><div class="worklist-grid">${users.map(user=>{
    const record=state.worklists?.find(row=>row.user_id===user.id),entries=record?.entries||[];
    return `<article class="worklist-card"><div class="worklist-card-top"><span class="worklist-avatar">${esc(user.name[0])}</span><div><h3>${esc(user.name)}님${user.id===getUser()?.id?'<small>나</small>':''}</h3><p>출근 후 할 일 · ${entries.length}개</p></div><button type="button" data-worklist-edit="${esc(user.id)}" aria-label="${esc(user.name)}님 할 일 편집">편집 <span aria-hidden="true">↗</span></button></div>${entries.length?`<ol class="worklist-entries">${entries.map((line,index)=>`<li><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span><p>${esc(line)}</p></li>`).join('')}</ol>`:`<button type="button" class="worklist-empty" data-worklist-edit="${esc(user.id)}"><span aria-hidden="true">＋</span>출근 후 할 일을 입력해 주세요.</button>`}${record?`<p class="worklist-updated">${esc(record.author)}님이 수정 · ${esc(new Date(record.updated_at).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul'}))}</p>`:''}</article>`;
   }).join('')}</div></section>`;
