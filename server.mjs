@@ -1,5 +1,6 @@
+import {profileRoutes} from './lib/user-profiles.mjs';
 import {worklistRoutes,worklistSnapshot} from './lib/user-worklists.mjs';
-import {initializeContributions,awardContribution,contributionSnapshot} from './lib/contributions.mjs';
+import {initializeContributions,awardContribution,contributionSnapshot,contributionMembers} from './lib/contributions.mjs';
 import {validCalendarColor} from './public/calendar-colors.js';
 import {bootstrapOwner} from './lib/admin-schema.mjs';
 import {adminRoutes,manager,verifyInitialBackup,audit} from './lib/admin.mjs';
@@ -152,12 +153,13 @@ export async function createApp({
 
   const administration=adminRoutes({db,auth,json,changed,publish});
   const chat = chatRoutes({db,auth,json,changed,publish});
+  const profiles=profileRoutes({db,auth,json,changed,publish,now});
   const worklists=worklistRoutes({db,auth,json,changed,publish,now});
   const sales = salesRoutes({db,auth,json,changed,publish,now,today:()=>seoulDate(now())});
   const office = officeRoutes({db,auth,json,changed,publish,now});
   const features = featureRoutes({db,auth,json,changed,publish});
   async function api(req, res, url) {
-    if (await worklists(req,res,url) || await administration(req,res,url) || await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
+    if (await profiles(req,res,url) || await worklists(req,res,url) || await administration(req,res,url) || await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
     if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized(),ownerConfigured:!!(await db.get("SELECT user_id FROM account_access WHERE access_role='owner' AND active=1")),ownerAssignmentComplete:!!(await db.get("SELECT value FROM metadata WHERE key='owner_gijeong1312_v1'")),backupRestoreVerified:!!(await db.get("SELECT value FROM metadata WHERE key='initial_backup_restore_verified_v1'")) });
     if (route === '/api/setup' && method === 'POST') {
@@ -235,7 +237,9 @@ export async function createApp({
       const user=await auth(req);
       await db.transaction(async connection => { if (await generateRecurring(connection,seoulDate(now()))) await changed(connection); });
       const result = await db.transaction(async connection => {
-        const users = await connection.all('SELECT u.id,u.name,u.username,a.access_role AS "accessRole",a.active,a.version AS "accessVersion" FROM users u JOIN account_access a ON a.user_id=u.id ORDER BY u.name,u.id');
+        const rawUsers=await connection.all('SELECT u.id,u.name,u.username,a.access_role AS "accessRole",a.active,a.version AS "accessVersion",p.version AS avatar_version FROM users u JOIN account_access a ON a.user_id=u.id LEFT JOIN user_profiles p ON p.user_id=u.id ORDER BY u.name,u.id');
+        const contributions=await contributionMembers(connection,seoulDate(now()).slice(0,7),rawUsers);
+        const users=rawUsers.map(u=>({...u,avatarVersion:u.avatar_version||0,avatarUrl:u.avatar_version?'/api/user-profiles/'+u.id+'/avatar?v='+u.avatar_version:null,contribution:contributions.find(member=>member.id===u.id)}));
         const items = (await connection.all(`${itemQuery} ORDER BY items.date,${db.itemOrder}`)).map(itemRow);
         const messages = (await connection.all(db.messageQuery)).map(messageRow), stock = Object.create(null);
         for (const item of items) if (item.type === 'inbound' && item.done) stock[item.title] = (stock[item.title] || 0) + item.qty;

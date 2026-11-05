@@ -68,3 +68,11 @@ test('calendar colors persist, reject stale/unsafe writes, and can change on com
  await app.close();app=await createApp({dataDir:dir,setupToken,now:()=>new Date('2026-11-04T03:00:00Z')});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+app.server.address().port;
  state=(await req('/api/state')).data;assert.equal(state.items.find(i=>i.id===item.id).calendarColor,'pink');assert.equal(state.items.find(i=>i.seriesId&&i.date==='2026-11-04').calendarColor,'blue');
 });
+
+
+test('home mini calendar shows the current month and marks today and schedule dates',async()=>{
+ const {renderHomeCalendar}=await import('../public/home-calendar.js');
+ const html=renderHomeCalendar([{id:'x',type:'task',date:'2024-02-29',title:'마감'}],'2024-02-29',String);
+ assert.ok(html.includes('2024년 2월'));assert.ok(html.includes('data-page="공용 달력"'));assert.ok(html.includes('mini-calendar-today mini-calendar-event'));assert.ok(html.includes('오늘 1개 일정'));assert.ok(html.includes('>29</span>'));
+ assert.ok(!html.includes('data-calendar-day='),'the compact calendar navigates instead of opening a nested day editor');
+});
