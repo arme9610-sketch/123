@@ -63,3 +63,34 @@ test('yesterday versus two days ago compares option units and excludes sites mis
  assert.equal(compareDailySales([],sites,current,previous).comparedSites.length,0);
  const zero=compareDailySales([{day:previous,site_id:'a',entries:entries(0,0)},{day:current,site_id:'a',entries:entries(0,0)}],sites,current,previous);assert.equal(zero.comparedSites.length,1);assert.ok(zero.options.every(o=>o.delta===0));
 });
+
+test('revenue impact ranks small expensive changes above larger cheap changes without a unit cutoff',async()=>{
+ const {compareDailySales}=await import('../public/sales-changes.js');
+ const rows=(day,cabin,pouch)=>({day,site_id:'a',entries:[{sku:'cabin-20-red',sold:cabin},{sku:'pouch-set',sold:pouch}]});
+ const report=compareDailySales([rows('2026-11-03',10,0),rows('2026-11-04',8,6)], [{id:'a'}],'2026-11-04','2026-11-03');
+ assert.equal(report.options[0].id,'cabin-20-red');assert.equal(report.options[0].revenueDelta,-318000);
+ assert.equal(report.previousRevenue,1590000);assert.equal(report.currentRevenue,1445400);assert.equal(report.revenueDelta,-144600);assert.equal(report.revenuePercent,-9.1);
+ assert.ok(report.insight.drivers[0].includes('318,000원'));
+});
+
+test('analysis explains a forty percent revenue loss, zero baseline and incomplete comparisons honestly',async()=>{
+ const {analyzeSalesChanges,compareDailySales}=await import('../public/sales-changes.js');
+ const report={comparedSites:[{id:'a'}],expectedSites:4,currentRevenue:6000000,previousRevenue:10000000,revenueDelta:-4000000,revenuePercent:-40,options:[{label:'카빈',previous:40,current:0,revenueDelta:-5000000},{label:'파우치',previous:0,current:10,revenueDelta:1000000}]};
+ const insight=analyzeSalesChanges(report);assert.match(insight.title,/긴급/);assert.match(insight.summary,/4,000,000원 감소/);assert.match(insight.summary,/-40%/);assert.match(insight.drivers[0],/100%/);assert.ok(insight.actions.some(v=>v.includes('ROAS')));assert.ok(insight.actions.some(v=>v.includes('품절')));assert.ok(insight.actions.some(v=>v.includes('1\/4')));
+ const empty=compareDailySales([],[{id:'a'}],'2026-11-04','2026-11-03');assert.equal(empty.revenuePercent,null);assert.equal(empty.insight.title,'비교 데이터 부족');
+ const zero=analyzeSalesChanges({...report,currentRevenue:100,previousRevenue:0,revenueDelta:100,revenuePercent:null});assert.match(zero.summary,/계산하지 않습니다/);
+});
+
+test('home revenue comparison renders all changed options and automatic action summary',async()=>{
+ const {compareDailySales,createSalesChanges}=await import('../public/sales-changes.js');
+ const {officeCatalog}=await import('../public/office-catalog.js');
+ const original=globalThis.document;globalThis.document={querySelector:()=>({outerHTML:''}),addEventListener(){}};
+ try{
+  const records=['2026-11-03','2026-11-04'].map((day,i)=>({day,site_id:'a',entries:officeCatalog.map(o=>({sku:o.id,sold:i?0:1}))}));
+  const source=compareDailySales(records,[{id:'a'}],'2026-11-04','2026-11-03');
+  const panel=createSalesChanges({api:async()=>source,escape:String,getUser:()=>({id:'tester'}),getToday:()=> '2026-11-05'});
+  panel.render();await new Promise(resolve=>setTimeout(resolve,0));const html=panel.render();
+  assert.match(html,/2일 전 매출/);assert.match(html,/자동 분석 요약/);assert.match(html,/ROAS/);assert.match(html,/연결되지 않아/);
+  assert.equal((html.match(/class="sales-change-card /g)||[]).length,officeCatalog.length);assert.ok(!html.includes('5개 이상'));assert.ok(!html.includes('NaN'));assert.ok(!html.includes('Infinity'));
+ }finally{globalThis.document=original;}
+});
