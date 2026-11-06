@@ -1,3 +1,4 @@
+import {initializeInboundArchive,purgeInboundArchive,inboundArchiveExpiry} from './lib/inbound-archive.mjs';
 import {attachmentRoutes,attachmentSnapshot,validateAttachments,applyAttachments,attachmentBodyLimit} from './lib/inbound-attachments.mjs';
 import {profileRoutes} from './lib/user-profiles.mjs';
 import {worklistRoutes,worklistSnapshot} from './lib/user-worklists.mjs';
@@ -37,7 +38,7 @@ export async function createApp({
     throw Object.assign(new Error('DATABASE_URL is required for this deployment.'), { code: 'DAYON_CONFIG' });
   }
   const db = await openStorage({ dataDir, databaseUrl });
-  try{await bootstrapOwner(db);await initializeContributions(db);}catch(error){await db.close();throw error;}
+  try{await bootstrapOwner(db);await initializeContributions(db);await initializeInboundArchive(db,now());await purgeInboundArchive(db,now());}catch(error){await db.close();throw error;}
   try{await verifyInitialBackup(db);}catch(error){console.error('Initial backup rehearsal failed:',error.code||error.name);}
   const streams = new Set(), attempts = new Map();
   const initialized = async (connection = db) => !!(await connection.get('SELECT 1 FROM users LIMIT 1'));
@@ -159,8 +160,14 @@ export async function createApp({
   const worklists=worklistRoutes({db,auth,json,changed,publish,now});
   const sales = salesRoutes({db,auth,json,changed,publish,now,today:()=>seoulDate(now())});
   const office = officeRoutes({db,auth,json,changed,publish,now});
-  const features = featureRoutes({db,auth,json,changed,publish});
+  let pruning=null;
+  async function pruneInbound(){
+    if(!pruning)pruning=(async()=>{if(await purgeInboundArchive(db,now()))await publish();})().finally(()=>{pruning=null;});
+    return pruning;
+  }
+  const features = featureRoutes({db,auth,json,changed,publish,beforeArchive:pruneInbound});
   async function api(req, res, url) {
+    if(url.pathname.startsWith('/api/items/')){await auth(req,req.method!=='GET');await pruneInbound();}
     if (await attachments(req,res,url) || await profiles(req,res,url) || await worklists(req,res,url) || await administration(req,res,url) || await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
     if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized(),ownerConfigured:!!(await db.get("SELECT user_id FROM account_access WHERE access_role='owner' AND active=1")),ownerAssignmentComplete:!!(await db.get("SELECT value FROM metadata WHERE key='owner_gijeong1312_v1'")),backupRestoreVerified:!!(await db.get("SELECT value FROM metadata WHERE key='initial_backup_restore_verified_v1'")) });
@@ -236,7 +243,7 @@ export async function createApp({
       const result=await db.transaction(c=>contributionSnapshot(c,{month,userId,offset:Number(rawOffset)}),{readOnly:true});return json(res,200,result);
     }
     if (route === '/api/state' && method === 'GET') {
-      const user=await auth(req);
+      const user=await auth(req);await pruneInbound();
       await db.transaction(async connection => { if (await generateRecurring(connection,seoulDate(now()))) await changed(connection); });
       const result = await db.transaction(async connection => {
         const rawUsers=await connection.all('SELECT u.id,u.name,u.username,a.access_role AS "accessRole",a.active,a.version AS "accessVersion",p.version AS avatar_version FROM users u JOIN account_access a ON a.user_id=u.id LEFT JOIN user_profiles p ON p.user_id=u.id ORDER BY u.name,u.id');
@@ -341,7 +348,7 @@ export async function createApp({
         const current = await getItem(itemMatch[1], connection); checkVersion(body, current);
         if (itemMatch[2]) {
           const completedAt=now();
-          const result=await connection.run('UPDATE items SET done=?,completed_at=?,version=version+1 WHERE id=? AND version=?',[current.done?0:1,current.done?null:completedAt.toISOString(),current.id,current.version]);
+          const result=await connection.run('UPDATE items SET done=?,completed_at=?,archive_expires_at=?,version=version+1 WHERE id=? AND version=?',[current.done?0:1,current.done?null:completedAt.toISOString(),current.type==='inbound'&&!current.done?inboundArchiveExpiry(completedAt):null,current.id,current.version]);
           if(result.changes!==1)throw new AppError(409,'다른 직원이 먼저 수정했습니다. 최신 내용을 확인해 주세요.');
           await awardContribution(connection,current,actor,completedAt);
         }
@@ -425,8 +432,11 @@ export async function createApp({
     }
   });
   server.requestTimeout = 15000; server.headersTimeout = 10000;
+  const archiveTimer=setInterval(()=>{if(!closing)pruneInbound().catch(error=>console.error('Inbound archive cleanup failed:',error.code||error.name));},60_000);
+  archiveTimer.unref();
   function close() {
     if (!closing) closing = (async () => {
+      clearInterval(archiveTimer);if(pruning)await pruning.catch(()=>{});
       for (const entry of streams) entry.res.end();
       await new Promise((resolve, reject) => server.close(error => error && error.code !== 'ERR_SERVER_NOT_RUNNING' ? reject(error) : resolve()));
       await db.close();

@@ -1,5 +1,5 @@
 import {createResourceAccess} from './resource-access.js';
-import {createInboundAttachmentForm,inboundAttachmentCell,bindInboundTable} from './inbound-attachments.js';
+import {createInboundAttachmentForm,inboundAttachmentCell,bindInboundTable,attachmentLinks} from './inbound-attachments.js';
 import {renderHomeCalendar} from './home-calendar.js';
 import {createUserWorklists} from './user-worklists.js';
 import {createContributions} from './contributions.js';
@@ -233,12 +233,12 @@ if(page==='오늘'){html=worklists.renderHome()+salesChanges.render()+`<section 
 }else if(page==='공용 달력'){html=heading('함께 보는 일정','입고, 발송, 업무 일정을 함께 확인하고 준비하세요.',`<button class="primary" data-new="meeting">＋ 일정 등록</button>`)+`<section class="panel"><div class="calendar-toolbar"><div class="month-controls"><button id="prev" aria-label="이전 달">‹</button><h2>${month.getFullYear()}년 ${month.getMonth()+1}월</h2><button id="next" aria-label="다음 달">›</button><button id="this-month">이번 달</button></div><div class="segmented">${['달력','표'].map(v=>`<button data-view="${v}" class="${view===v?'selected':''}">${v}</button>`).join('')}</div></div><div class="calendar-all-note">전체 일정 · 날짜 칸을 눌러 추가·수정·삭제하세요.</div>${view==='달력'?calendar():calendarAgenda()}</section>`;
 }else if(page==='업무'){const items=state.items.filter(i=>['task','shipment','office'].includes(i.type)&&(taskTab!=='내 업무'||i.ownerId===currentUser.id)).sort((a,b)=>Number(a.done)-Number(b.done)||Number(b.priority==='urgent')-Number(a.priority==='urgent')||(a.dueDate||a.date).localeCompare(b.dueDate||b.date));html=heading('업무를 함께, 차근차근','담당자와 마감일을 정하고 진행 상황을 공유하세요.',`<button class="primary" data-new="task">＋ 업무 요청</button>`)+`<div class="tabs">${['전체 업무','내 업무','부탁한 업무'].map(t=>`<button data-tab="${t}" class="${taskTab===t?'selected':''}">${t}</button>`).join('')}</div><section class="panel">${(taskTab==='부탁한 업무'?items.filter(i=>i.requesterId===currentUser.id):items).map(row).join('')||empty('아직 등록된 업무가 없어요.')}</section>` + recurringList();
  }else if(page==='업무 기여도'){html=contributions.render();}else if(page==='판매 · 취소/환불'){html=salesUI.render();}else if(page==='사무실 재고'){html=officeUI.render();}else if(page==='수입'){
-html=heading('수입','인천 ETA와 창고 입고 일정을 확인하세요.',`<button class="primary" data-new="inbound">＋ 수입 일정 등록</button>`)+`<section class="panel">${importTable(state.items.filter(i=>i.type==='inbound'))}</section>`;
+html=heading('수입','인천 ETA와 창고 입고 일정을 확인하세요. 창고 입고 완료 건은 아카이브에서 7일간 보관 후 자동 삭제됩니다.',`<button class="primary" data-new="inbound">＋ 수입 일정 등록</button>`)+`<section class="panel">${importTable(state.items.filter(i=>i.type==='inbound'&&!i.done))}</section>`;
 }else if(page==='사용자'){html=teamSettings();}else if(page==='아카이브'){html=archivePage();}else if(['문서','자료실'].includes(page)){html=libraryPage(page);}else{html=chatPage();}
 $('#main').innerHTML=html;restoreDraft(preserved);chatWidget.refreshView();calendarUI.refresh();
 }
 function empty(t){return `<div class="empty">${t}</div>`}
-function importTable(items){return `<div class="table-wrap"><table><thead><tr><th>일정 / 내용</th><th>인천 ETA 날짜</th><th>창고 입고 날짜</th><th>상태</th><th>입고 자료</th></tr></thead><tbody>${items.map(i=>`<tr><td><button class="text-button" data-edit="${i.id}">${esc(i.title)}</button>${i.note?`<small class="tracking">${esc(i.note)}</small>`:''}</td><td>${esc(i.date)}</td><td>${esc(i.warehouseDate||'미정')}</td><td><span class="status ${i.done?'done':''}">${i.done?'완료':'예정'}</span><button class="complete" data-done="${i.id}">${i.done?'완료 취소':'완료 처리'}</button></td><td class="inbound-attachment-cell">${inboundAttachmentCell(i,esc)}</td></tr>`).join('')}</tbody></table>${items.length?'':empty('등록된 수입 일정이 없습니다.')}</div>`;}
+function importTable(items){return `<div class="table-wrap"><table><thead><tr><th>일정 / 내용</th><th>인천 ETA 날짜</th><th>창고 입고 날짜</th><th>상태</th><th>입고 자료</th></tr></thead><tbody>${items.map(i=>`<tr><td><button class="text-button" data-edit="${i.id}">${esc(i.title)}</button>${i.note?`<small class="tracking">${esc(i.note)}</small>`:''}</td><td>${esc(i.date)}</td><td>${esc(i.warehouseDate||'미정')}</td><td><span class="status ${i.done?'done':''}">${i.done?'완료':'예정'}</span><button class="complete" data-done="${i.id}">${i.done?'완료 취소':'창고 입고 완료'}</button></td><td class="inbound-attachment-cell">${inboundAttachmentCell(i,esc)}</td></tr>`).join('')}</tbody></table>${items.length?'':empty('등록된 수입 일정이 없습니다.')}</div>`;}
 function table(items){return `<div class="table-wrap"><table><thead><tr><th>일정 / 내용</th><th>날짜</th><th>수량</th><th>담당자</th><th>상태</th><th></th></tr></thead><tbody>${items.map(i=>`<tr><td>${badge(i)} <button class="text-button" data-edit="${i.id}">${esc(i.title)}</button>${i.tracking?`<small class="tracking">${esc(i.tracking)}</small>`:''}</td><td>${esc(i.date.slice(5).replace('-','.'))}</td><td>${i.qty}${i.type==='shipment'?'건':'개'}</td><td><span class="mini-avatar">${esc(i.owner[0])}</span> ${esc(i.owner)}</td><td><span class="status ${i.done?'done':''}">${i.done?'완료':'예정'}</span></td><td><button class="complete" data-done="${i.id}">${i.done?'완료 취소':'완료 처리'}</button></td></tr>`).join('')}</tbody></table>${items.length?'':empty('등록된 일정이 없습니다.')}</div>`}
 function calendar(){
  const start=new Date(month);start.setDate(1-start.getDay());const events=calendarEntries(state.items);
@@ -385,7 +385,7 @@ async function handleClick(button) {
     const item = state.items.find(i => i.id === button.dataset.done); button.disabled = true;
     try {
       await api(`/api/items/${encodeURIComponent(item.id)}/toggle`, { method: 'POST', body: { version: item.version } });
-      await refreshState();if(page==='아카이브')await loadCollection(page); toast(item.done ? '완료를 취소했어요.' : '완료 처리했어요.');
+      await refreshState();if(page==='아카이브')await loadCollection(page); toast(item.done ? '완료를 취소했어요.' : item.type==='inbound'?'창고 입고 완료 · 아카이브에서 7일 후 삭제됩니다.':'완료 처리했어요.');
     } catch (error) {
       if (error.status === 409) await refreshState().catch(() => {});
       throw error;
@@ -493,7 +493,7 @@ function collectionBody(kind, renderItem) {
  return (data.results?.length?data.results.map(renderItem).join(''):empty('조건에 맞는 기록이 없습니다.'))+(data.hasMore?`<button class="add-row" data-more="${kind}" ${data.loading?'disabled':''}>${data.loading?'불러오는 중…':'다음 기록 더 보기'}</button>`:'');
 }
 function archivePage() {
- return heading('완료한 일도, 언제든 다시','완료된 업무·입고·발송·일정을 찾아보고 필요한 내용을 확인하세요.')+`<section class="panel">${searchFields('아카이브')}<div class="collection-note">날짜는 업무 예정일 기준입니다. 완료를 취소하면 아카이브에서 빠지고 입고 재고에도 반영됩니다.</div>${collectionBody('아카이브',i=>`<div class="archive-entry">${row(i)}<small>예정일 ${esc(i.date)} · 완료 ${esc(dateLabel(i.completedAt))}</small></div>`)}</section>`;
+ return heading('완료한 일도, 언제든 다시','완료된 업무·입고·발송·일정을 찾아보고 필요한 내용을 확인하세요.')+`<section class="panel">${searchFields('아카이브')}<div class="collection-note">수입 건은 창고 입고 완료 후 7일간 보관되며, 이후 첨부자료와 함께 자동 영구삭제됩니다. 잘못 완료했다면 보관 기간 안에 완료를 취소하세요. 다른 업무는 자동 삭제하지 않습니다.</div>${collectionBody('아카이브',i=>`<div class="archive-entry">${row(i)}<small>예정일 ${esc(i.date)} · 완료 ${esc(dateLabel(i.completedAt))}${i.type==='inbound'&&i.archiveExpiresAt?` · <b class="inbound-expiry">자동 삭제 ${esc(dateLabel(i.archiveExpiresAt))}</b>`:''}</small>${i.type==='inbound'&&i.attachments?.length?`<div class="archive-inbound-files">${attachmentLinks(i,esc)}</div>`:''}</div>`)}</section>`;
 }
 function libraryPage(kind) {
  const manual=kind==='문서';

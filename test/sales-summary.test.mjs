@@ -117,3 +117,40 @@ test('home changes shows four primary cards and expands remaining revenue-ranked
   panel.clear();
  }finally{globalThis.document=original;}
 });
+
+test('cancellation growth alerts independently of revenue growth and includes stock, shipment, SMS and CS checks',async()=>{
+ const {compareDailySales}=await import('../public/sales-changes.js');
+ const rows=(day,sold,cancelled,refunded=0,site_id='a')=>({day,site_id,entries:[{sku:'cabin-20-red',sold,cancelled,refunded}]});
+ const report=compareDailySales([rows('2026-11-03',10,1,1),rows('2026-11-04',20,5,1),rows('2026-11-04',999,999,0,'b')],[{id:'a'},{id:'b'}],'2026-11-04','2026-11-03');
+ assert.equal(report.currentRevenue,3180000);assert.ok(report.revenueDelta>0);assert.equal(report.cancellation.previous,2);assert.equal(report.cancellation.current,6);assert.equal(report.cancellation.delta,4);assert.equal(report.cancellation.percent,200);assert.equal(report.cancellation.previousRate,20);assert.equal(report.cancellation.currentRate,30);assert.equal(report.cancellation.rateDelta,10);
+ assert.match(report.insight.title,/매출 증가.*취소·환불 증가/);assert.match(report.cancellation.summary,/2개에서 어제 6개/);assert.equal(report.cancellation.drivers[0].id,'cabin-20-red');
+ for(const keyword of ['품절','출고 지연','품절 안내 문자','발송 실패','CS','응대 시간'])assert.ok(report.insight.actions.some(action=>action.includes(keyword)),keyword);
+ assert.match(report.insight.actions[0],/공통 사이트 1\/2/);
+});
+
+test('cancellation rate increase is flagged even when quantity is flat, while decreases do not trigger quantity growth',async()=>{
+ const {compareDailySales}=await import('../public/sales-changes.js');
+ const row=(day,sold,cancelled)=>({day,site_id:'a',entries:[{sku:'pouch-set',sold,cancelled,refunded:0}]});
+ const report=compareDailySales([row('2026-11-03',100,10),row('2026-11-04',50,10)],[{id:'a'}],'2026-11-04','2026-11-03');
+ assert.equal(report.cancellation.increased,false);assert.equal(report.cancellation.rateIncreased,true);assert.equal(report.cancellation.rateDelta,10);assert.match(report.insight.title,/취소·환불률 상승/);assert.match(report.cancellation.title,/취소·환불률이 상승/);
+ const decline=compareDailySales([row('2026-11-03',100,10),row('2026-11-04',100,2)],[{id:'a'}],'2026-11-04','2026-11-03');assert.equal(decline.cancellation.increased,false);assert.equal(decline.cancellation.rateIncreased,false);assert.equal(decline.cancellation.actions.length,0);
+});
+
+test('zero baseline, zero sales and missing comparison data never invent cancellation percentages',async()=>{
+ const {compareDailySales}=await import('../public/sales-changes.js');
+ const row=(day,sold,cancelled)=>({day,site_id:'a',entries:[{sku:'pouch-set',sold,cancelled,refunded:0}]});
+ const report=compareDailySales([row('2026-11-03',0,0),row('2026-11-04',0,3)],[{id:'a'}],'2026-11-04','2026-11-03');
+ assert.equal(report.cancellation.delta,3);assert.equal(report.cancellation.percent,null);assert.equal(report.cancellation.previousRate,null);assert.equal(report.cancellation.currentRate,null);assert.equal(report.cancellation.rateDelta,null);assert.equal(report.cancellation.increased,true);assert.match(report.cancellation.summary,/증가율은 계산하지/);assert.ok(report.insight.actions.some(action=>action.includes('품절 안내 문자')));
+ const missing=compareDailySales([row('2026-11-04',10,3)],[{id:'a'}],'2026-11-04','2026-11-03');assert.equal(missing.cancellation.increased,false);assert.equal(missing.insight.title,'비교 데이터 부족');
+ assert.ok(!JSON.stringify(report).includes('NaN'));assert.ok(!JSON.stringify(report).includes('Infinity'));
+});
+
+test('home summary renders cancellation warning and customer notification checks alongside sales gains',async()=>{
+ const {compareDailySales,createSalesChanges}=await import('../public/sales-changes.js');const original=globalThis.document;
+ globalThis.document={querySelector:()=>({outerHTML:''}),addEventListener(){}};
+ try{
+  const source=compareDailySales(['2026-11-03','2026-11-04'].map((day,i)=>({day,site_id:'a',entries:[{sku:'pouch-set',sold:i?20:10,cancelled:i?3:1,refunded:0}]})),[{id:'a'}],'2026-11-04','2026-11-03');
+  const panel=createSalesChanges({api:async()=>source,escape:String,getUser:()=>({id:'tester'}),getToday:()=> '2026-11-05'});panel.render();await new Promise(resolve=>setTimeout(resolve,0));const html=panel.render();
+  assert.match(html,/sales-cancellation is-warning/);assert.match(html,/취소·환불이 늘고 있습니다/);assert.match(html,/품절 안내 문자/);assert.match(html,/CS 문의/);assert.match(html,/주문 건수가 아닌/);assert.match(html,/1개 → 3개/);assert.match(html,/10% → 15%/);assert.ok(!html.includes('NaN'));panel.clear();
+ }finally{globalThis.document=original;}
+});
