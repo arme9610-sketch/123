@@ -1,3 +1,5 @@
+import {createResourceAccess} from './resource-access.js';
+import {createInboundAttachmentForm,inboundAttachmentCell,bindInboundTable} from './inbound-attachments.js';
 import {renderHomeCalendar} from './home-calendar.js';
 import {createUserWorklists} from './user-worklists.js';
 import {createContributions} from './contributions.js';
@@ -66,7 +68,7 @@ function signedOut(message = '') {
   $('#office-stock-dialog').close();
   $('#task-detail-dialog').close();
   $('#menu-order-dialog').close();
-  resetManualDocument();$('#resource-dialog').close();
+  resetManualDocument();resourceAccess.clear();$('#resource-dialog').close();$('#resource-form').reset();
   $('#dialog').close(); $('#main').replaceChildren(); $('#workspace-screen').hidden = true;
   showAuth(inviteToken ? 'join' : 'login', message);
 }
@@ -236,7 +238,7 @@ html=heading('수입','인천 ETA와 창고 입고 일정을 확인하세요.',`
 $('#main').innerHTML=html;restoreDraft(preserved);chatWidget.refreshView();calendarUI.refresh();
 }
 function empty(t){return `<div class="empty">${t}</div>`}
-function importTable(items){return `<div class="table-wrap"><table><thead><tr><th>일정 / 내용</th><th>인천 ETA 날짜</th><th>창고 입고 날짜</th><th>상태</th></tr></thead><tbody>${items.map(i=>`<tr><td><button class="text-button" data-edit="${i.id}">${esc(i.title)}</button>${i.note?`<small class="tracking">${esc(i.note)}</small>`:''}</td><td>${esc(i.date)}</td><td>${esc(i.warehouseDate||'미정')}</td><td><span class="status ${i.done?'done':''}">${i.done?'완료':'예정'}</span><button class="complete" data-done="${i.id}">${i.done?'완료 취소':'완료 처리'}</button></td></tr>`).join('')}</tbody></table>${items.length?'':empty('등록된 수입 일정이 없습니다.')}</div>`;}
+function importTable(items){return `<div class="table-wrap"><table><thead><tr><th>일정 / 내용</th><th>인천 ETA 날짜</th><th>창고 입고 날짜</th><th>상태</th><th>입고 자료</th></tr></thead><tbody>${items.map(i=>`<tr><td><button class="text-button" data-edit="${i.id}">${esc(i.title)}</button>${i.note?`<small class="tracking">${esc(i.note)}</small>`:''}</td><td>${esc(i.date)}</td><td>${esc(i.warehouseDate||'미정')}</td><td><span class="status ${i.done?'done':''}">${i.done?'완료':'예정'}</span><button class="complete" data-done="${i.id}">${i.done?'완료 취소':'완료 처리'}</button></td><td class="inbound-attachment-cell">${inboundAttachmentCell(i,esc)}</td></tr>`).join('')}</tbody></table>${items.length?'':empty('등록된 수입 일정이 없습니다.')}</div>`;}
 function table(items){return `<div class="table-wrap"><table><thead><tr><th>일정 / 내용</th><th>날짜</th><th>수량</th><th>담당자</th><th>상태</th><th></th></tr></thead><tbody>${items.map(i=>`<tr><td>${badge(i)} <button class="text-button" data-edit="${i.id}">${esc(i.title)}</button>${i.tracking?`<small class="tracking">${esc(i.tracking)}</small>`:''}</td><td>${esc(i.date.slice(5).replace('-','.'))}</td><td>${i.qty}${i.type==='shipment'?'건':'개'}</td><td><span class="mini-avatar">${esc(i.owner[0])}</span> ${esc(i.owner)}</td><td><span class="status ${i.done?'done':''}">${i.done?'완료':'예정'}</span></td><td><button class="complete" data-done="${i.id}">${i.done?'완료 취소':'완료 처리'}</button></td></tr>`).join('')}</tbody></table>${items.length?'':empty('등록된 일정이 없습니다.')}</div>`}
 function calendar(){
  const start=new Date(month);start.setDate(1-start.getDay());const events=calendarEntries(state.items);
@@ -278,11 +280,13 @@ function restoreDraft(draft) {
   if (messages) messages.scrollTop = chatSearchActive ? (draft.scroll||0) : draft.nearEnd ? messages.scrollHeight : draft.scroll;
 }
 
+bindInboundTable({api,getItems:()=>state.items,getUser:()=>currentUser,refresh:refreshState,toast});
+const inboundFiles=createInboundAttachmentForm({root:$('#inbound-attachment-fields'),escape:esc});
 let editing = null, editingVersion = null;
 function openForm(type = 'task', date = today, id = null) {
   const item = state.items.find(i => i.id === id), form = $('#form');
   editing = id; editingVersion = item?.version ?? null;
-  form.reset(); $('#form-error').textContent = '';
+  form.reset();inboundFiles.reset(item); $('#form-error').textContent = '';
   form.querySelector('.submit').disabled = false;
   const request = !['inbound','meeting'].includes(item?.type || type);
   const options = request ? [['task','업무'],['shipment','택배 발송'],['recurring','반복업무'],['office','사무실 입·출고']] : [['task','업무'],['inbound','입고'],['shipment','택배 발송'],['meeting','공통 일정']];
@@ -314,6 +318,7 @@ function openForm(type = 'task', date = today, id = null) {
 function updateItemFields() {
   const type = $('#form').elements.type.value;
   $('#warehouse-date-field').hidden=type!=='inbound';
+  $('#inbound-attachment-fields').hidden=type!=='inbound';
   $('#request-date-label').textContent=type==='inbound'?'인천 ETA 날짜':'요청일';
   $('#task-deadline-fields').hidden=type==='inbound';
   $('#form').elements.dueDate.required=type!=='inbound';
@@ -341,6 +346,7 @@ async function saveItem(form) {
   $('#form-error').textContent = '';
   let stale = false;
   try {
+    if(data.type==='inbound')Object.assign(data,await inboundFiles.changes());
     if (editing) data.version = editingVersion;
     await api(editing ? `/api/items/${encodeURIComponent(editing)}` : data.type === 'recurring' ? '/api/recurring' : '/api/items', { method: editing ? 'PUT' : 'POST', body: data });
     $('#dialog').close();
@@ -492,7 +498,7 @@ function archivePage() {
 function libraryPage(kind) {
  const manual=kind==='문서';
  const groupTabs=(manual?`<div class="tabs manual-group-tabs" role="group" aria-label="문서 구분">${[['manual','매뉴얼'],['other','기타']].map(([group,label])=>`<button type="button" data-manual-group="${group}" class="${manualGroup===group?'selected':''}" aria-pressed="${manualGroup===group}">${label}</button>`).join('')}</div>`:'');
- return heading(manual?'문서':'함께 사용하는 자료실',manual?'업무 절차와 기준을 정리하고 함께 확인하세요.':'양식과 문서를 올리고 필요한 파일을 내려받으세요.',`<button class="primary" data-library-new="${kind}">＋ ${manual?(manualGroup==='other'?'기타 문서 작성':'매뉴얼 작성'):'파일 올리기'}</button>`)+groupTabs+`<section class="panel">${searchFields(kind)}${manual?'':`<div class="collection-note">파일당 5MB · 자료실 전체 25MB · 현재 ${((collectionData[kind]?.usedBytes||0)/1024/1024).toFixed(1)}MB 사용</div>`}${collectionBody(kind,i=>manual?`<button class="library-card" data-manual="${esc(i.id)}"><span class="badge green">${esc(i.category)}</span><h2>${esc(i.title)}</h2><p>${esc(manualText(i.content).slice(0,130))}</p><small>${esc(i.editor)} · ${esc(dateLabel(i.updated_at))}</small><span class="card-arrow">↗</span></button>`:`<div class="resource-entry"><div><span class="badge blue">${esc(i.category)}</span><b>${esc(i.title)}</b><small>${esc(i.filename)} · ${(i.size/1024).toFixed(1)}KB · ${esc(i.author)} · ${esc(dateLabel(i.created_at))}</small></div><a class="download" href="/api/resources/${encodeURIComponent(i.id)}/download">다운로드 ↓</a><button class="delete-link" data-resource-delete="${esc(i.id)}">삭제</button></div>`)}</section>`;
+ return heading(manual?'문서':'함께 사용하는 자료실',manual?'업무 절차와 기준을 정리하고 함께 확인하세요.':'양식과 문서를 올리고 필요한 파일을 내려받으세요.',`<button class="primary" data-library-new="${kind}">＋ ${manual?(manualGroup==='other'?'기타 문서 작성':'매뉴얼 작성'):'파일 올리기'}</button>`)+groupTabs+`<section class="panel">${searchFields(kind)}${manual?'':`<div class="collection-note">파일당 5MB · 자료실·입고 자료 합산 25MB · 현재 ${((collectionData[kind]?.usedBytes||0)/1024/1024).toFixed(1)}MB 사용</div>`}${collectionBody(kind,i=>manual?`<button class="library-card" data-manual="${esc(i.id)}"><span class="badge green">${esc(i.category)}</span><h2>${esc(i.title)}</h2><p>${esc(manualText(i.content).slice(0,130))}</p><small>${esc(i.editor)} · ${esc(dateLabel(i.updated_at))}</small><span class="card-arrow">↗</span></button>`:`<div class="resource-entry"><div><span class="badge blue">${esc(i.category)}</span><b>${esc(i.title)}${i.password_protected?'<span class="resource-protected">비밀번호 보호</span>':''}</b><small>${esc(i.filename)} · ${(i.size/1024).toFixed(1)}KB · ${esc(i.author)} · ${esc(dateLabel(i.created_at))}</small></div><button type="button" class="download" data-resource-download="${esc(i.id)}">다운로드 ↓</button><button type="button" class="resource-edit" data-resource-edit="${esc(i.id)}">수정</button><button class="delete-link" data-resource-delete="${esc(i.id)}">삭제</button></div>`)}</section>`;
 }
 function messageMarkup(message) {
  return `<div class="message"><span class="avatar">${esc(message.name[0])}</span><div><small>${esc(message.name)} · ${esc(dateLabel(message.createdAt))}</small><p>${esc(message.text)}</p></div></div>`;
@@ -527,6 +533,8 @@ function openLibrary(kind,id=null) {
  $('#main').hidden=true;$('#manual-document').hidden=false;manualEditor.layout();updateManualStatus();window.scrollTo(0,0);
  if(!item)form.elements.title.focus();
 }
+$('#resource-dialog').addEventListener('close',()=>$('#resource-form').reset());
+const resourceAccess=createResourceAccess({api,getUser:()=>currentUser,getCsrfToken:()=>csrfToken,escape:esc,refresh:()=>loadCollection('자료실'),toast});
 async function collectionClick(button) {
  if(button.dataset.manualGroup){manualGroup=button.dataset.manualGroup;collectionData['문서']=undefined;await loadCollection('문서');return;}
  if(button.id==='manual-back'){if(closeManualDocument())await loadCollection('문서');return;}
@@ -534,9 +542,14 @@ async function collectionClick(button) {
  if(button.dataset.resetSearch){const kind=button.dataset.resetSearch;searches[kind]={};if(kind==='채팅')chatSearchActive=false;for(const input of ($('#collection-search')?.elements||[]))if(input.name)input.value='';render();if(kind!=='채팅')await loadCollection(kind);}
  if(button.dataset.libraryNew)openLibrary(button.dataset.libraryNew);
  if(button.dataset.manual)openLibrary('문서',button.dataset.manual);
- if(button.dataset.closeDialog)document.getElementById(button.dataset.closeDialog).close();
- if(button.dataset.resourceDelete&&confirm('이 자료를 삭제할까요? 삭제한 파일은 복구할 수 없습니다.')){
-  await api('/api/resources/'+encodeURIComponent(button.dataset.resourceDelete),{method:'DELETE'});await loadCollection('자료실');toast('자료를 삭제했어요.');
+ if(button.dataset.closeDialog){document.getElementById(button.dataset.closeDialog).close();if(button.dataset.closeDialog==='resource-dialog')$('#resource-form').reset();}
+ const resourceId=button.dataset.resourceEdit||button.dataset.resourceDownload||button.dataset.resourceDelete;
+ if(resourceId){
+  const item=collectionData['자료실']?.results?.find(file=>file.id===resourceId);
+  if(!item){toast('자료 목록을 새로 불러온 뒤 다시 시도해 주세요.');return;}
+  if(button.dataset.resourceEdit)resourceAccess.edit(item);
+  else if(button.dataset.resourceDownload)await resourceAccess.download(item);
+  else resourceAccess.remove(item);
  }
  if(button.id==='manual-delete'&&manualEditing&&confirm('이 문서를 삭제할까요?')){
   if(manualSaving)return;
@@ -561,7 +574,7 @@ async function collectionSubmit(form) {
   }else{
    const file=form.elements.file.files[0];if(!file||file.size===0||file.size>5*1024*1024)throw new Error('내용이 있는 5MB 이하 파일을 선택해 주세요.');
    const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('파일을 읽지 못했습니다.'));reader.readAsDataURL(file);});
-   await api('/api/resources',{method:'POST',body:{title:form.elements.title.value,category:form.elements.category.value,filename:file.name,data}});$('#resource-dialog').close();await loadCollection('자료실');
+   await api('/api/resources',{method:'POST',body:{title:form.elements.title.value,category:form.elements.category.value,filename:file.name,data,password:form.elements.password.value}});$('#resource-dialog').close();form.reset();await loadCollection('자료실');
   }toast('저장했어요.');
  }catch(e){error.textContent=e.message;}finally{button.disabled=false;if(form.id==='manual-form'){manualSaving=false;updateManualStatus();}}
  return true;

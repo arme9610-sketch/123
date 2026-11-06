@@ -1,3 +1,4 @@
+import {attachmentRoutes,attachmentSnapshot,validateAttachments,applyAttachments,attachmentBodyLimit} from './lib/inbound-attachments.mjs';
 import {profileRoutes} from './lib/user-profiles.mjs';
 import {worklistRoutes,worklistSnapshot} from './lib/user-worklists.mjs';
 import {initializeContributions,awardContribution,contributionSnapshot,contributionMembers} from './lib/contributions.mjs';
@@ -120,7 +121,7 @@ export async function createApp({
   async function getItem(id, connection = db) {
     const row = await connection.get(`${itemQuery} WHERE items.id=?`, [id]);
     if (!row) throw new AppError(404, '일정을 찾을 수 없습니다.');
-    return itemRow(row);
+    return {...itemRow(row),attachments:await attachmentSnapshot(connection,id)};
   }
   async function validateItem(body) {
     const title = requireText(body.title, '내용', 100), type = body.type, qty = body.qty;
@@ -151,6 +152,7 @@ export async function createApp({
     if (!Number.isSafeInteger(body.version) || body.version !== current.version) throw new AppError(409, '다른 직원이 먼저 수정했습니다. 최신 내용을 확인한 후 다시 시도해 주세요.');
   }
 
+  const attachments=attachmentRoutes({db,auth,json,changed,publish,getItem,checkVersion,now});
   const administration=adminRoutes({db,auth,json,changed,publish});
   const chat = chatRoutes({db,auth,json,changed,publish});
   const profiles=profileRoutes({db,auth,json,changed,publish,now});
@@ -159,7 +161,7 @@ export async function createApp({
   const office = officeRoutes({db,auth,json,changed,publish,now});
   const features = featureRoutes({db,auth,json,changed,publish});
   async function api(req, res, url) {
-    if (await profiles(req,res,url) || await worklists(req,res,url) || await administration(req,res,url) || await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
+    if (await attachments(req,res,url) || await profiles(req,res,url) || await worklists(req,res,url) || await administration(req,res,url) || await sales(req,res,url) || await office(req,res,url) || await chat(req,res,url) || await features(req,res,url)) return;
     const route = url.pathname, method = req.method;
     if (route === '/api/status' && method === 'GET') return json(res, 200, { initialized: await initialized(),ownerConfigured:!!(await db.get("SELECT user_id FROM account_access WHERE access_role='owner' AND active=1")),ownerAssignmentComplete:!!(await db.get("SELECT value FROM metadata WHERE key='owner_gijeong1312_v1'")),backupRestoreVerified:!!(await db.get("SELECT value FROM metadata WHERE key='initial_backup_restore_verified_v1'")) });
     if (route === '/api/setup' && method === 'POST') {
@@ -241,6 +243,8 @@ export async function createApp({
         const contributions=await contributionMembers(connection,seoulDate(now()).slice(0,7),rawUsers);
         const users=rawUsers.map(u=>({...u,avatarVersion:u.avatar_version||0,avatarUrl:u.avatar_version?'/api/user-profiles/'+u.id+'/avatar?v='+u.avatar_version:null,contribution:contributions.find(member=>member.id===u.id)}));
         const items = (await connection.all(`${itemQuery} ORDER BY items.date,${db.itemOrder}`)).map(itemRow);
+        const attached=await attachmentSnapshot(connection);
+        for(const item of items)item.attachments=attached.filter(file=>file.item_id===item.id);
         const messages = (await connection.all(db.messageQuery)).map(messageRow), stock = Object.create(null);
         for (const item of items) if (item.type === 'inbound' && item.done) stock[item.title] = (stock[item.title] || 0) + item.qty;
         const recurring = await connection.all('SELECT s.*,o.name owner,r.name requester FROM recurring_tasks s JOIN users o ON o.id=s.owner_id JOIN users r ON r.id=s.requester_id ORDER BY s.start_date,s.id');
@@ -303,9 +307,10 @@ export async function createApp({
       await publish(); return json(res,200,{item});
     }
     if (route === '/api/items' && method === 'POST') {
-      const user = await auth(req, true), body = await jsonBody(req), item = await validateItem(body), id = randomUUID();
+      const user = await auth(req, true), body = await jsonBody(req,attachmentBodyLimit), item = await validateItem(body), id = randomUUID(), attachmentChanges=validateAttachments(body,item.type);
       await db.transaction(async connection => {
         await connection.run('INSERT INTO items(id,title,type,qty,owner_id,requester_id,date,note,tracking,priority,due_date,office_sku,office_operation,office_bucket,warehouse_date,calendar_color) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [id, item.title, item.type, item.qty, item.ownerId, user.id, item.date, item.note, item.tracking, item.priority, item.dueDate,item.officeSku,item.officeOperation,item.officeBucket,item.warehouseDate,item.calendarColor]);
+        await applyAttachments(connection,id,item.type,attachmentChanges,user,now());
         await changed(connection);
       });
       await publish(); return json(res, 201, { item: await getItem(id) });
@@ -331,7 +336,7 @@ export async function createApp({
     }
     if (itemMatch && ((method === 'PUT' && !itemMatch[2]) || (method === 'POST' && itemMatch[2]))) {
       const actor=await auth(req, true);
-      const body = await jsonBody(req), updated = itemMatch[2] ? null : await validateItem(body);
+      const body = await jsonBody(req,itemMatch[2]?undefined:attachmentBodyLimit), updated = itemMatch[2] ? null : await validateItem(body), attachmentChanges=itemMatch[2]?null:validateAttachments(body,updated.type);
       const item = await db.transaction(async connection => {
         const current = await getItem(itemMatch[1], connection); checkVersion(body, current);
         if (itemMatch[2]) {
@@ -344,6 +349,7 @@ export async function createApp({
           if (current.seriesId && (updated.type !== 'task' || updated.date !== current.date)) throw new AppError(422,'반복업무의 구분과 발생일은 변경할 수 없습니다.');
           if (current.done) throw new AppError(409, '완료를 취소한 후 수정해 주세요.');
           await connection.run('UPDATE items SET title=?,type=?,qty=?,owner_id=?,date=?,note=?,tracking=?,priority=?,due_date=?,office_sku=?,office_operation=?,office_bucket=?,warehouse_date=?,calendar_color=?,version=version+1 WHERE id=? AND version=?', [updated.title, updated.type, updated.qty, updated.ownerId, updated.date, updated.note, updated.tracking, updated.priority, updated.dueDate, updated.officeSku,updated.officeOperation,updated.officeBucket,updated.warehouseDate,body.calendarColor===undefined?current.calendarColor:updated.calendarColor,current.id, current.version]);
+          await applyAttachments(connection,current.id,updated.type,attachmentChanges,actor,now());
         }
         if (body.applyToSeries === true && current.seriesId && !itemMatch[2]) {
           await connection.run('UPDATE recurring_tasks SET title=?,owner_id=?,note=?,priority=?,due_offset=?,calendar_color=?,version=version+1 WHERE id=? AND stopped_date IS NULL',[updated.title,updated.ownerId,updated.note,updated.priority,Math.round((Date.parse(updated.dueDate)-Date.parse(updated.date))/86400000),body.calendarColor===undefined?current.calendarColor:updated.calendarColor,current.seriesId]);
