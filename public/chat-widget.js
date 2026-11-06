@@ -39,7 +39,7 @@ export function createChatWidget({api,escape:esc,getUser,getState,getPage,refres
       toggle.title=prefs.enabled&&permission==='granted'?'클릭하면 PC 채팅 알림을 끕니다':'새 메시지를 PC 시스템 알림으로 받습니다';
     }
     document.getElementById('chat-notification-test').disabled=!prefs.enabled||permission!=='granted';
-    document.getElementById('chat-notification-status').textContent=permission==='denied'?'주소창의 사이트 설정에서 알림을 허용해 주세요.':prefs.enabled&&permission==='granted'?'PC 알림이 켜졌어요. 다른 창을 보거나 최소화해도 동작합니다. Dayon 탭은 열어 두세요. 알림이 안 보이면 PC의 알림·집중 모드 설정을 확인해 주세요.':'PC 채팅 알림을 켜고 브라우저에서 허용해 주세요. Dayon 탭을 완전히 닫은 상태의 알림은 지원하지 않습니다.';
+    document.getElementById('chat-notification-status').textContent=permission==='denied'?'주소창의 사이트 설정에서 알림을 허용해 주세요.':prefs.enabled&&permission==='granted'?'PC 알림이 켜졌어요. 다른 창을 보거나 최소화해도 동작합니다. DayOn 탭은 열어 두세요. 알림이 안 보이면 PC의 알림·집중 모드 설정을 확인해 주세요.':'PC 채팅 알림을 켜고 브라우저에서 허용해 주세요. DayOn 탭을 완전히 닫은 상태의 알림은 지원하지 않습니다.';
 
   }
   function showPopup(messages){
@@ -92,7 +92,7 @@ export function createChatWidget({api,escape:esc,getUser,getState,getPage,refres
       const options={body:latest.text.slice(0,120),tag:'dayon-chat-'+userId,requireInteraction:true,silent:false,data:{type:'chat',userId,sequence:latest.sequence}};
       let delivered=false;
       try{
-        delivered=await deliverNotification(`${latest.name} · Dayon 채팅${fresh.length>1?' ('+fresh.length+'개)':''}`,options,userId);
+        delivered=await deliverNotification(`${latest.name} · DayOn 채팅${fresh.length>1?' ('+fresh.length+'개)':''}`,options,userId);
       }catch{/* App banners and unread counts remain available when OS delivery fails. */}
       finally{if(!delivered){let value=ephemeralPrefs.get('dayon-chat-notifications-'+userId)||prefs;try{value=JSON.parse(localStorage.getItem('dayon-chat-notifications-'+userId))||value;}catch{}value.notified=previous;savePrefs(value,userId);}}
     }
@@ -145,7 +145,7 @@ export function createChatWidget({api,escape:esc,getUser,getState,getPage,refres
   document.getElementById('chat-notification-test').addEventListener('click',async()=>{
     const user=getUser();if(!user||!supported()||Notification.permission!=='granted'||!preferences().enabled)return;
     try{
-      const delivered=await deliverNotification('Dayon · PC 알림 테스트',{body:'새 메시지는 다른 창을 보거나 최소화한 동안에도 이곳에 표시됩니다.',tag:'dayon-chat-'+user.id,requireInteraction:true,silent:false,data:{type:'chat',userId:user.id}},user.id);
+      const delivered=await deliverNotification('DayOn · PC 알림 테스트',{body:'새 메시지는 다른 창을 보거나 최소화한 동안에도 이곳에 표시됩니다.',tag:'dayon-chat-'+user.id,requireInteraction:true,silent:false,data:{type:'chat',userId:user.id}},user.id);
       if(!delivered)return;
       toast('테스트 알림을 보냈어요. 표시되지 않으면 PC 알림·집중 모드 설정을 확인해 주세요.');
     }catch{toast('알림을 표시하지 못했어요. 브라우저와 PC의 알림 설정을 확인해 주세요.');}

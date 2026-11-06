@@ -75,7 +75,7 @@ function signedOut(message = '') {
 function showAuth(mode, error = '') {
   authMode = mode; $('#boot').hidden = true; $('#auth-screen').hidden = false;
   const setup = mode === 'setup', join = mode === 'join';
-  $('#auth-screen').innerHTML = `<button type="button" class="theme-toggle auth-theme-toggle" data-theme-toggle aria-label="야간 모드로 전환"></button><div class="auth-intro"><a class="brand" href="/">Dayon<span>ARME WORKSPACE</span></a><h1>모두의 하루를,<br>데이온에서 함께.</h1><p>업무, 일정, 입고와 택배 발송까지.<br>함께 보고 함께 움직이는 우리 회사의 공간입니다.</p><div class="auth-art">✦<span>ARME WORKSPACE</span></div></div>
+  $('#auth-screen').innerHTML = `<button type="button" class="theme-toggle auth-theme-toggle" data-theme-toggle aria-label="야간 모드로 전환"></button><div class="auth-intro"><a class="brand" href="/" aria-label="DayOn 홈"><img class="brand-logo" src="/dayon-ufo.svg" width="46" height="46" alt=""><strong class="brand-wordmark">Day<em>On</em></strong><small class="brand-caption">ARME WORKSPACE</small></a><h1>모두의 하루를,<br>데이온에서 함께.</h1><p>업무, 일정, 입고와 택배 발송까지.<br>함께 보고 함께 움직이는 우리 회사의 공간입니다.</p><div class="auth-art">✦<span>ARME WORKSPACE</span></div></div>
     <div class="auth-card"><p class="eyebrow">WELCOME TO DAYON</p><h2>${setup ? '우리 회사 공간 만들기' : join ? '함께 시작하기' : '다시 만나 반가워요'}</h2><p class="subtitle">${setup ? '첫 계정을 만들고 함께 시작하세요.' : join ? '전달받은 초대로 계정을 만드세요.' : '로그인하고 오늘의 흐름을 확인하세요.'}</p>
     <form id="auth-form">
       ${setup ? '<label>초기 설정 키<input name="setupToken" type="password" autocomplete="off" required placeholder="서버의 초기 설정 키"></label><label>이름<input name="name" required maxlength="30" autocomplete="name" placeholder="표시할 이름"></label>' : ''}
@@ -613,7 +613,7 @@ function renderReminders() {
   const focused = document.activeElement?.dataset.reminderItem;
   const focusedControl = document.activeElement?.closest('#reminder-panel') ? document.activeElement.id : '';
   const scroll = $('#reminder-panel .reminder-list')?.scrollTop || 0;
-  $('#reminder-panel').innerHTML = `<div class="reminder-heading"><div><p class="eyebrow">YOUR DAY, ON TIME</p><h2>해야 할 일 <span>${reminders.length}</span></h2></div><button type="button" data-close-reminders aria-label="알림 닫기">✕</button></div><p class="reminder-description">내 담당 업무·입고·발송·일정 중 오늘 마감이거나 기한이 지난 항목입니다.</p><div class="reminder-list">${reminders.length?reminders.map(item=>`<button type="button" class="reminder-item" data-reminder-item="${esc(item.id)}"><span class="badge ${item.overdue?'reminder-overdue':'blue'}">${item.overdue?'기한 지남':'오늘 마감'}</span><b>${esc(item.title)}</b><small>${esc(types[item.type][0])} · 마감 ${esc(item.dueDate||item.date)}</small><span class="reminder-arrow">↗</span></button>`).join(''):'<div class="empty">지금 확인할 마감 업무가 없어요.</div>'}</div><div class="browser-reminder-setting"><div><b>브라우저 알림</b><span>${enabled?'켜짐':permission==='denied'?'브라우저에서 차단됨':supported?'꺼짐':'이 브라우저는 지원하지 않아요'}</span></div><button type="button" id="browser-reminder-toggle" class="primary" ${supported&&!requestingReminderPermission?'':'disabled'}>${prefs.enabled?'끄기':'켜기'}</button><p>Dayon이 열린 동안 알림을 보냅니다. 앱을 완전히 닫은 상태의 푸시 알림은 지원하지 않습니다.</p></div>`;
+  $('#reminder-panel').innerHTML = `<div class="reminder-heading"><div><p class="eyebrow">YOUR DAY, ON TIME</p><h2>해야 할 일 <span>${reminders.length}</span></h2></div><button type="button" data-close-reminders aria-label="알림 닫기">✕</button></div><p class="reminder-description">내 담당 업무·입고·발송·일정 중 오늘 마감이거나 기한이 지난 항목입니다.</p><div class="reminder-list">${reminders.length?reminders.map(item=>`<button type="button" class="reminder-item" data-reminder-item="${esc(item.id)}"><span class="badge ${item.overdue?'reminder-overdue':'blue'}">${item.overdue?'기한 지남':'오늘 마감'}</span><b>${esc(item.title)}</b><small>${esc(types[item.type][0])} · 마감 ${esc(item.dueDate||item.date)}</small><span class="reminder-arrow">↗</span></button>`).join(''):'<div class="empty">지금 확인할 마감 업무가 없어요.</div>'}</div><div class="browser-reminder-setting"><div><b>브라우저 알림</b><span>${enabled?'켜짐':permission==='denied'?'브라우저에서 차단됨':supported?'꺼짐':'이 브라우저는 지원하지 않아요'}</span></div><button type="button" id="browser-reminder-toggle" class="primary" ${supported&&!requestingReminderPermission?'':'disabled'}>${prefs.enabled?'끄기':'켜기'}</button><p>DayOn이 열린 동안 알림을 보냅니다. 앱을 완전히 닫은 상태의 푸시 알림은 지원하지 않습니다.</p></div>`;
   $('#reminder-panel .reminder-list').scrollTop=scroll;
   if(focusedControl)document.getElementById(focusedControl)?.focus({preventScroll:true});
   if(focused)$('#reminder-panel').querySelector(`[data-reminder-item="${focused}"]`)?.focus({preventScroll:true});
@@ -666,16 +666,16 @@ async function dispatchBrowserReminders() {
   saveReminderPreferences(prefs,userId);
   try{
     const overdue=fresh.filter(item=>item.overdue).length;
-    const options={body:`오늘 마감 ${fresh.length-overdue}건, 기한 지난 업무 ${overdue}건이 있어요. Dayon에서 확인해 주세요.`,tag:'dayon-due-'+userId};
+    const options={body:`오늘 마감 ${fresh.length-overdue}건, 기한 지난 업무 ${overdue}건이 있어요. DayOn에서 확인해 주세요.`,tag:'dayon-due-'+userId};
     if('serviceWorker' in navigator){
       const registration=await navigator.serviceWorker.register('/sw.js');
       const ready=registration.active?registration:await navigator.serviceWorker.ready;
       if(currentUser?.id!==userId || !reminderPreferences(userId).enabled)return;
-      await ready.showNotification(`Dayon · 해야 할 일 ${fresh.length}건`,options);delivered=true;
+      await ready.showNotification(`DayOn · 해야 할 일 ${fresh.length}건`,options);delivered=true;
       if(currentUser?.id!==userId || !reminderPreferences(userId).enabled)await closeDesktopNotifications();
     }else{
       if(currentUser?.id!==userId)return;
-      const notification=new Notification(`Dayon · 해야 할 일 ${fresh.length}건`,options);delivered=true;
+      const notification=new Notification(`DayOn · 해야 할 일 ${fresh.length}건`,options);delivered=true;
       desktopNotifications.add(notification);
       notification.onclose=()=>desktopNotifications.delete(notification);
       notification.onclick=()=>{window.focus();notification.close();if(currentUser)toggleReminders(true);};

@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0071e3">
-  <title>Dayon · 함께하는 하루</title>
+  <title>DayOn · 함께하는 하루</title>
+  <link rel="icon" type="image/svg+xml" href="/dayon-ufo.svg">
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/ui.css">
@@ -14,7 +15,7 @@
   <section id="auth-screen" class="auth-screen" hidden></section>
   <div id="workspace-screen" hidden>
     <aside>
-      <a class="brand" href="/">Dayon<span>ARME WORKSPACE</span></a>
+      <a class="brand" href="/" aria-label="DayOn 홈"><img class="brand-logo" src="/dayon-ufo.svg" width="46" height="46" alt=""><strong class="brand-wordmark">Day<em>On</em></strong><small class="brand-caption">ARME WORKSPACE</small></a>
       <div class="workspace"><b>ARME</b><small id="team-size">공유 워크스페이스</small></div>
       <nav id="nav" aria-label="주 메뉴"></nav>
       <button type="button" id="menu-order-open" class="menu-order-open">메뉴 순서</button>
@@ -44,11 +45,11 @@
     </div>
     <div id="chat-popup" class="chat-popup" role="status" aria-live="polite" hidden></div>
     <section id="chat-widget" class="chat-widget" aria-label="채팅 위젯" hidden>
-      <div class="widget-heading"><div><b>Dayon 채팅</b><small id="widget-connection">실시간 연결 중</small></div><button type="button" id="widget-expand" aria-label="전체 채팅과 검색 열기">↗</button><button type="button" id="widget-close" aria-label="채팅 위젯 닫기">✕</button></div>
+      <div class="widget-heading"><div><b>DayOn 채팅</b><small id="widget-connection">실시간 연결 중</small></div><button type="button" id="widget-expand" aria-label="전체 채팅과 검색 열기">↗</button><button type="button" id="widget-close" aria-label="채팅 위젯 닫기">✕</button></div>
       <div class="widget-subheading"><span id="widget-unread-label">모두의 대화</span><span>최근 100개</span></div>
       <div id="widget-messages" class="widget-messages" role="region" aria-label="최근 대화"></div>
       <form id="widget-chat-form"><textarea name="message" rows="1" required maxlength="2000" placeholder="메시지 입력…" aria-label="위젯 메시지"></textarea><button type="submit" class="primary" aria-label="위젯 메시지 보내기">↑</button></form>
-      <div class="widget-notification-setting"><button type="button" id="chat-desktop-toggle">브라우저 알림 켜기</button><button type="button" id="chat-notification-test">알림 테스트</button><small id="chat-notification-status" role="status">PC에서 다른 창을 보거나 최소화해도 보낸 사람과 메시지를 시스템 알림으로 표시합니다. Dayon 탭은 열어 두세요.</small></div>
+      <div class="widget-notification-setting"><button type="button" id="chat-desktop-toggle">브라우저 알림 켜기</button><button type="button" id="chat-notification-test">알림 테스트</button><small id="chat-notification-status" role="status">PC에서 다른 창을 보거나 최소화해도 보낸 사람과 메시지를 시스템 알림으로 표시합니다. DayOn 탭은 열어 두세요.</small></div>
     </section>
     <button type="button" id="chat-launcher" class="chat-launcher" aria-label="채팅 열기" aria-expanded="false" aria-controls="chat-widget"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11a8 8 0 0 1-8 8H8l-5 3 1-6a8 8 0 1 1 17-5Z M8 10h8 M8 14h5"/></svg><span>채팅</span><span id="chat-unread" class="chat-unread" hidden></span></button>
   </div>
