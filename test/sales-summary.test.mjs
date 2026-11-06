@@ -94,3 +94,26 @@ test('home revenue comparison renders all changed options and automatic action s
   assert.equal((html.match(/class="sales-change-card /g)||[]).length,officeCatalog.length);assert.ok(!html.includes('5개 이상'));assert.ok(!html.includes('NaN'));assert.ok(!html.includes('Infinity'));
  }finally{globalThis.document=original;}
 });
+
+test('home changes shows four primary cards and expands remaining revenue-ranked cards without refetching',async()=>{
+ const {compareDailySales,createSalesChanges}=await import('../public/sales-changes.js');
+ const {officeCatalog}=await import('../public/office-catalog.js');
+ const original=globalThis.document;let click,fetches=0,expandedClass=false;
+ const region={inert:true,classList:{toggle(name,value){assert.equal(name,'is-expanded');expandedClass=value;}}};
+ const label={textContent:''},attrs={};const button={setAttribute(k,v){attrs[k]=v;},querySelector:()=>label};
+ globalThis.document={querySelector:selector=>selector==='#sales-changes-more'?region:{outerHTML:''},addEventListener(type,fn){if(type==='click')click=fn;}};
+ try{
+  const source=compareDailySales(['2026-11-03','2026-11-04'].map((day,i)=>({day,site_id:'a',entries:officeCatalog.map(o=>({sku:o.id,sold:i?0:1}))})),[{id:'a'}],'2026-11-04','2026-11-03');
+  const panel=createSalesChanges({api:async()=>{fetches++;return source;},escape:String,getUser:()=>({id:'tester'}),getToday:()=> '2026-11-05'});
+  panel.render();await new Promise(resolve=>setTimeout(resolve,0));let html=panel.render();
+  const count=part=>(part.match(/class="sales-change-card /g)||[]).length;
+  assert.equal(count(html.split('id="sales-changes-more"')[0]),4);
+  assert.match(html,/class="sales-change-remainder " inert/);assert.match(html,/aria-expanded="false"/);assert.match(html,/TOP 4/);
+  assert.equal(count(html),officeCatalog.length);
+  const event={target:{closest:selector=>selector==='[data-sales-changes-expand]'?button:null}};
+  click(event);assert.equal(region.inert,false);assert.equal(expandedClass,true);assert.equal(attrs['aria-expanded'],'true');assert.equal(label.textContent,'TOP 4만 보기');
+  assert.match(panel.render(),/class="sales-change-remainder is-expanded"/);
+  click(event);assert.equal(region.inert,true);assert.equal(expandedClass,false);assert.equal(attrs['aria-expanded'],'false');assert.match(label.textContent,/펼쳐보기/);assert.equal(fetches,1);
+  panel.clear();
+ }finally{globalThis.document=original;}
+});
