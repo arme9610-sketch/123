@@ -8,6 +8,38 @@ export function createDailySales({api,escape:esc,toast,getUser}){
  const analytics=createSalesAnalytics({api,escape:esc,getUser});
  const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul'}).format(new Date());
  let day=today(),site='',group='에센셜',data=null,error='',loading=false,owner='',epoch=0,busy=false;let importer=null;const drafts=new Map();
+ const leaveDialog=document.createElement('dialog');leaveDialog.setAttribute('aria-label','판매 수량 저장 확인');document.body.append(leaveDialog);
+ let resolveLeave=null;
+ const dirtyKeys=()=>[...drafts].filter(([,d])=>d.dirty).map(([k])=>k);
+ function finishLeave(choice){const resolve=resolveLeave;resolveLeave=null;leaveDialog.close();resolve?.(choice);}
+ leaveDialog.addEventListener('click',e=>{const button=e.target.closest('[data-sales-leave]');if(button)finishLeave(button.dataset.salesLeave);});
+ leaveDialog.addEventListener('cancel',e=>{e.preventDefault();finishLeave('stay');});
+ leaveDialog.addEventListener('close',()=>{if(!leaveDialog.open&&resolveLeave)finishLeave('stay');});
+ async function saveDrafts(keys){
+  if(busy)return false;
+  const pending=keys.map(k=>({key:k,d:drafts.get(k)})).filter(({d})=>d);
+  if(pending.some(({d})=>d.entries.some(e=>!Number.isSafeInteger(e.sold)||e.sold<0||e.sold>1000000||!Number.isSafeInteger(e.cancelled)||e.cancelled<0||e.cancelled>2000000))){error='수량을 허용 범위의 정수로 입력해 주세요.';repaint();return false;}
+  const user=getUser()?.id,generation=epoch;busy=true;error='';repaint();
+  try{
+   for(const {key:k,d} of pending){
+    const [date,siteId]=k.split('|');
+    const result=await api('/api/daily-sales',{method:'PUT',body:{day:date,siteId,version:d.version,entries:d.entries}});
+    if(getUser()?.id!==user||generation!==epoch)return false;
+    drafts.delete(k);if(date===day&&data)data.records=data.records.filter(r=>r.site_id!==siteId).concat(result.record);
+   }
+   toast('전체 상품 수량을 저장했어요.');analytics.invalidate();return true;
+  }catch(e){if(getUser()?.id===user&&generation===epoch)error=e.message;return false;}
+  finally{if(getUser()?.id===user&&generation===epoch){busy=false;repaint();}}
+ }
+ async function beforeLeave(){
+  if(busy){toast('수량을 저장 중입니다. 잠시 기다려 주세요.');return false;}
+  const keys=dirtyKeys();if(!keys.length)return true;if(resolveLeave)return false;
+  leaveDialog.innerHTML=`<div class="dialog-title"><h2>변경한 수량을 저장할까요?</h2></div><p>저장하지 않은 판매·취소/환불 수량이 있습니다.</p><div class="sales-import-actions"><button type="button" class="primary" data-sales-leave="save">저장 후 이동</button><button type="button" data-sales-leave="discard">저장하지 않고 이동</button><button type="button" data-sales-leave="stay" autofocus>계속 작성</button></div>`;
+  const choice=await new Promise(resolve=>{resolveLeave=resolve;leaveDialog.showModal();});
+  if(choice==='save')return saveDrafts(keys);
+  if(choice==='discard'){for(const k of keys)drafts.delete(k);return true;}
+  return false;
+ }
  const key=()=>day+'|'+site;
  const record=()=>data?.records.find(r=>r.site_id===site);
  function draft(){if(!drafts.has(key()))drafts.set(key(),{entries:officeCatalog.map(s=>combineSalesEntry(record()?.entries.find(e=>e.sku===s.id)||{sku:s.id,sold:0,cancelled:0,refunded:0})),version:record()?.version||0,dirty:false});return drafts.get(key());}
@@ -39,7 +71,7 @@ export function createDailySales({api,escape:esc,toast,getUser}){
   const v=d.entries[i];document.querySelector(`[data-sales-rate="${i}"]`).textContent=rateLabel(v.sold,v.cancelled);
   document.querySelector('.sales-group-summary').innerHTML=summary(groupTotals(d));document.querySelector('.sales-summary').innerHTML=summary(salesTotals(d.entries));document.querySelector('#sales-save-status').textContent='저장하지 않은 입력이 있습니다.';
  });
- document.addEventListener('change',e=>{if(busy)return;
+ document.addEventListener('change',async e=>{if(busy)return;
   if(e.target.id==='sales-csv-file'){
    const file=e.target.files?.[0];e.target.value='';if(!file||!data||!site)return;
    const d=draft(),target={day,siteId:site,siteName:data.sites.find(s=>s.id===site)?.name,userId:getUser()?.id,version:d.version,signature:JSON.stringify(d.entries)};
@@ -50,21 +82,19 @@ export function createDailySales({api,escape:esc,toast,getUser}){
    }});
    importer.open(file,target);return;
   }
-  if(e.target.id==='sales-day'&&e.target.value){day=e.target.value;data=null;error='';repaint();}if(e.target.id==='sales-site'){site=e.target.value;repaint();}});
- document.addEventListener('click',e=>{
+  if(e.target.id==='sales-day'&&e.target.value){const next=e.target.value;if(next!==day&&await beforeLeave()){day=next;data=null;error='';}repaint();}if(e.target.id==='sales-site'){const next=e.target.value;if(next!==site&&await beforeLeave())site=next;repaint();}});
+ document.addEventListener('click',async e=>{
   if(busy)return;
   if(e.target.closest('#sales-import-open'))document.querySelector('#sales-csv-file')?.click();
   const tab=e.target.closest('[data-sales-group]');if(tab){group=tab.dataset.salesGroup;repaint();document.querySelector(`[data-sales-group="${group}"]`)?.focus({preventScroll:true});}
-  if(e.target.closest('#sales-today')){day=today();data=null;error='';repaint();}
+  if(e.target.closest('#sales-today')&&day!==today()&&await beforeLeave()){day=today();data=null;error='';repaint();}
   if(e.target.closest('#sales-reload')){load();analytics.invalidate();}
   if(e.target.closest('#sales-discard')&&confirm('선택한 날짜·사이트의 저장하지 않은 입력을 버리고 최신 기록을 불러올까요?')){drafts.delete(key());load();}
  });
  document.addEventListener('submit',async e=>{
   if(e.target.id!=='sales-entry-form')return;e.preventDefault();if(busy)return;
-  const selectedKey=key(),d=draft(),user=getUser()?.id;busy=true;error='';repaint();
-  try{const result=await api('/api/daily-sales',{method:'PUT',body:{day,siteId:site,version:d.version,entries:d.entries}});if(getUser()?.id!==user)return;drafts.delete(selectedKey);data.records=data.records.filter(r=>r.site_id!==site).concat(result.record);toast('전체 상품 수량을 저장했어요.');analytics.invalidate();await load();}
-  catch(e){if(getUser()?.id===user)error=e.message;}finally{busy=false;repaint();}
+  await saveDrafts([key()]);
  });
  window.addEventListener('beforeunload',e=>{if([...drafts.values()].some(d=>d.dirty)){e.preventDefault();e.returnValue='';}});
- return {render,clear(){analytics.clear();importer?.clear();epoch++;drafts.clear();data=null;error='';loading=false;owner='';site='';busy=false;}};
+ return {render,beforeLeave,clear(){finishLeave('stay');analytics.clear();importer?.clear();epoch++;drafts.clear();data=null;error='';loading=false;owner='';site='';busy=false;}};
 }

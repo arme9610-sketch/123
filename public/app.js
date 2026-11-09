@@ -357,6 +357,7 @@ async function saveItem(form) {
   } finally { button.disabled = stale; }
 }
 async function navigate(nextPage) {
+  if(page==='판매 · 취소/환불'&&nextPage!==page&&!await salesUI.beforeLeave())return;
   if(manualOpen&&!closeManualDocument())return;
   page = menuPages.includes(nextPage) ? nextPage : '오늘'; render();
   if (page === '사용자'&&['owner','admin'].includes(currentUser?.accessRole)) await refreshInvitations();
@@ -412,6 +413,7 @@ $('#add-top').onclick = () => page==='판매 · 취소/환불'?document.querySel
 $('#delete-item').onclick=()=>{if(editing)removeItem(editing,editingVersion);};
 $('#close').onclick = () => $('#dialog').close();
 $('#logout').onclick = async () => {
+  if(!await salesUI.beforeLeave())return;
   if(manualOpen&&!closeManualDocument())return;
   try { await api('/api/logout', { method: 'POST', body: {} }); signedOut(); }
   catch (error) { toast(error.message); }

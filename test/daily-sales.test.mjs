@@ -49,7 +49,7 @@ test('product tabs keep drafts and save all hidden options together',async()=>{
  const originalDocument=globalThis.document,originalWindow=globalThis.window;
  const events=new Map(),root={outerHTML:''},node={innerHTML:'',textContent:'',focus(){}};
  const data={sites:salesSiteNames.map((name,i)=>({id:'site-'+i,name})),records:[]};let saved;
- globalThis.document={addEventListener(type,fn){events.set(type,fn);},querySelector(selector){return selector==='#daily-sales-root'?root:node;}};
+ globalThis.document={body:{append(){}},createElement:()=>({setAttribute(){},addEventListener(){},close(){}}),addEventListener(type,fn){events.set(type,fn);},querySelector(selector){return selector==='#daily-sales-root'?root:node;}};
  globalThis.window={addEventListener(){}};
  try{
   const ui=createDailySales({getUser:()=>({id:'tester'}),escape:s=>String(s),toast(){},api:async(path,options)=>{if(options){saved=structuredClone(options.body);return {record:{...saved,site_id:saved.siteId,version:1,author:'담당자',updated_at:new Date().toISOString()}};}return structuredClone(data);}});
@@ -63,4 +63,38 @@ test('product tabs keep drafts and save all hidden options together',async()=>{
   click('파우치세트');await events.get('submit')({target:{id:'sales-entry-form'},preventDefault(){}});
   assert.equal(saved.entries.length,32);assert.equal(saved.entries[0].sold,100);assert.equal(saved.entries[0].cancelled,10);
  }finally{globalThis.document=originalDocument;globalThis.window=originalWindow;}
+});
+
+test('unsaved sales ask to save, discard or stay; failures keep changes and block leaving',async()=>{
+ const {createDailySales}=await import('../public/daily-sales.js');
+ const oldDocument=globalThis.document,oldWindow=globalThis.window;
+ const listeners=new Map(),dialogListeners=new Map(),windowListeners=new Map(),writes=[];
+ const stub={innerHTML:'',textContent:''};let fail=false;
+ const dialog={innerHTML:'',open:false,setAttribute(){},showModal(){this.open=true;},close(){this.open=false;},addEventListener:(type,fn)=>dialogListeners.set(type,fn)};
+ globalThis.document={body:{append(){}},createElement:()=>dialog,addEventListener(type,fn){if(!listeners.has(type))listeners.set(type,[]);listeners.get(type).push(fn);},querySelector:selector=>['#daily-sales-root','#sales-analytics'].includes(selector)?null:stub};
+ globalThis.window={addEventListener:(type,fn)=>windowListeners.set(type,fn)};
+ const flush=()=>new Promise(resolve=>setImmediate(resolve));
+ try{
+  const ui=createDailySales({escape:String,toast(){},getUser:()=>({id:'worker'}),api:async(path,options)=>{
+   if(options?.method==='PUT'){if(fail)throw new Error('저장 실패');writes.push(structuredClone(options.body));return {record:{site_id:options.body.siteId,entries:options.body.entries,version:options.body.version+1}};}
+   if(path.includes('/summary'))return {periods:[]};
+   return {sites:[{id:'sales-cafe24',name:'카페24'},{id:'sales-geo',name:'지오코리아'}],records:[]};
+  }});
+  ui.render();await flush();ui.render();
+  assert.equal(await ui.beforeLeave(),true);assert.equal(dialog.open,false);
+  const input=value=>{for(const fn of listeners.get('input'))fn({target:{matches:()=>true,dataset:{salesIndex:'0',salesField:'sold'},value:String(value)}});};
+  const choose=choice=>dialogListeners.get('click')({target:{closest:()=>({dataset:{salesLeave:choice}})}});
+  input(3);let leaving=ui.beforeLeave();assert.equal(dialog.open,true);choose('stay');assert.equal(await leaving,false);assert.equal(writes.length,0);
+  leaving=ui.beforeLeave();choose('save');assert.equal(await leaving,true);assert.equal(writes.length,1);assert.equal(writes[0].entries[0].sold,3);assert.equal(await ui.beforeLeave(),true);
+  input(7);fail=true;leaving=ui.beforeLeave();choose('save');assert.equal(await leaving,false);assert.match(ui.render(),/저장 실패/);fail=false;
+  leaving=ui.beforeLeave();choose('stay');assert.equal(await leaving,false);
+  leaving=ui.beforeLeave();choose('discard');assert.equal(await leaving,true);assert.equal(writes.length,1);assert.equal(await ui.beforeLeave(),true);
+  input(9);leaving=ui.beforeLeave();dialogListeners.get('cancel')({preventDefault(){}});assert.equal(await leaving,false);
+  let prevented=false;windowListeners.get('beforeunload')({preventDefault(){prevented=true;}});assert.equal(prevented,true);
+  // A cancelled sales-site change restores the selected site and keeps its edits.
+  const change=listeners.get('change')[0]({target:{id:'sales-site',value:'sales-geo'}});choose('stay');await change;
+  leaving=ui.beforeLeave();choose('save');assert.equal(await leaving,true);assert.equal(writes.at(-1).siteId,'sales-cafe24');assert.equal(writes.at(-1).entries[0].sold,9);
+  input(-1);leaving=ui.beforeLeave();choose('save');assert.equal(await leaving,false);assert.match(ui.render(),/정수로 입력/);
+  ui.clear();assert.equal(await ui.beforeLeave(),true);await flush();
+ }finally{globalThis.document=oldDocument;globalThis.window=oldWindow;}
 });
