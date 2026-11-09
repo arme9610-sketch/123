@@ -6,21 +6,21 @@ import {createApp} from '../server.mjs';
 import {contributionLevel} from '../lib/contributions.mjs';
 import {backupSnapshot,rehearseBackup,encryptBackup,decryptBackup} from '../lib/backup.mjs';
 import {openStorage} from '../lib/database.mjs';
-import {levelStartXP,contributionTier} from '../public/contribution-tiers.js';
+import {levelStartXP} from '../public/contribution-tiers.js';
 const password='Contribution-password-123',setupToken='contribution-fixture-key';
 
-test('levels use fixed tier requirements, all title boundaries, and cap at level 50',()=>{
+test('every level requires 1 XP, preserves title boundaries, and caps at level 50',()=>{
  for(let level=1;level<=50;level++){
   const xp=levelStartXP(level),result=contributionLevel(xp);
-  assert.equal(result.level,level);assert.equal(result.required,level===50?null:contributionTier(level).required);
+  assert.equal(xp,level-1);assert.equal(result.level,level);assert.equal(result.required,level===50?null:1);
   if(level>1)assert.equal(contributionLevel(xp-1).level,level-1);
  }
- assert.deepEqual([1,9,10,19,20,29,30,39,40,49,50].map(l=>contributionLevel(levelStartXP(l)).required),[1,1,2,2,3,3,4,4,5,5,null]);
- assert.deepEqual([10,20,30,40,50].map(levelStartXP),[9,29,59,99,149]);
- assert.deepEqual([0,9,29,59,99].map(xp=>contributionLevel(xp).tierName),['업무초보자','숙련자','베테랑','마스터','신']);
+ assert.deepEqual([1,9,10,19,20,29,30,39,40,49,50].map(l=>contributionLevel(levelStartXP(l)).required),[1,1,1,1,1,1,1,1,1,1,null]);
+ assert.deepEqual([10,20,30,40,50].map(levelStartXP),[9,19,29,39,49]);
+ assert.deepEqual([0,9,19,29,39].map(xp=>contributionLevel(xp).tierName),['업무초보자','숙련자','베테랑','마스터','신']);
  assert.equal(contributionLevel(0).title,'업무초보자');assert.equal(contributionLevel(9).title,'업무숙련자');
- assert.equal(contributionLevel(29).title,'업무베테랑');assert.equal(contributionLevel(59).title,'업무마스터');assert.equal(contributionLevel(99).title,'업무의 신');
- assert.equal(contributionLevel(100000).level,50);assert.equal(contributionLevel(149).required,null);
+ assert.equal(contributionLevel(19).title,'업무베테랑');assert.equal(contributionLevel(29).title,'업무마스터');assert.equal(contributionLevel(39).title,'업무의 신');
+ assert.equal(contributionLevel(100000).level,50);assert.equal(contributionLevel(49).required,null);
  assert.deepEqual([0,1,2,3,5,6].map(xp=>contributionLevel(xp).level),[1,2,3,4,6,7]);
 });
 async function fixture(t){
