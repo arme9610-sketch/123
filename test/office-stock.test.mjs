@@ -50,3 +50,27 @@ for(const engine of process.env.MOA_TEST_DATABASE_URL?['postgres']:['sqlite']){
   assert.equal((await req('/api/items','POST',{type:'office',title:'위조 옵션',qty:1,date:'2026-10-30',ownerId:auth.data.user.id,officeSku:'fake',officeOperation:'return'})).status,422);
  });
 }
+
+test('inventory sheets show separate columns and edit fields while preserving the other quantities',async()=>{
+ const {createOfficeStock}=await import('../public/office-stock.js');
+ const originalDocument=globalThis.document,originalFormData=globalThis.FormData;
+ const events=new Map(),dialogEvents=new Map(),main={innerHTML:''};let saved;
+ const stock={id:'pouch-set',label:'파우치',model:'파우치세트',size:'공통',color:'공통',goodQty:7,returnedQty:3,serviceQty:5,defectiveQty:2,version:4};
+ const dialog={innerHTML:'',showModal(){},close(){},addEventListener:(type,fn)=>dialogEvents.set(type,fn)};
+ globalThis.document={querySelector:selector=>selector==='#main'?main:dialog,addEventListener:(type,fn)=>events.set(type,fn)};
+ globalThis.FormData=class{constructor(form){return Object.entries(form.values);}};
+ try{
+  const ui=createOfficeStock({api:async(path,options)=>{saved=options.body;},escape:String,getState:()=>({officeStock:[stock]}),refresh:async()=>{},toast:()=>{}});
+  main.innerHTML=ui.render();assert.match(main.innerHTML,/<h1>사무실 재고현황<\/h1>/);
+  assert.match(main.innerHTML,/data-stock-total="good"/);assert.doesNotMatch(main.innerHTML,/data-stock-total="service"/);
+  const click=(selector,dataset)=>events.get('click')({target:{closest:s=>s===selector?{dataset}:null}});
+  await click('[data-office-sheet]',{officeSheet:'service'});
+  assert.match(main.innerHTML,/data-stock-total="service"/);assert.doesNotMatch(main.innerHTML,/data-stock-total="good"/);
+  await click('[data-office-adjust]',{officeAdjust:stock.id});
+  assert.match(dialog.innerHTML,/name="serviceQty"/);assert.doesNotMatch(dialog.innerHTML,/name="goodQty"/);
+  await dialogEvents.get('submit')({preventDefault(){},stopPropagation(){},target:{values:{serviceQty:'8',defectiveQty:'2'},querySelector:()=>({disabled:false})}});
+  assert.deepEqual(saved,{goodQty:7,returnedQty:3,serviceQty:8,defectiveQty:2,version:4});
+  await click('[data-office-sheet]',{officeSheet:'normal'});await click('[data-office-adjust]',{officeAdjust:stock.id});
+  assert.match(dialog.innerHTML,/name="goodQty"/);assert.doesNotMatch(dialog.innerHTML,/name="serviceQty"/);
+ }finally{globalThis.document=originalDocument;globalThis.FormData=originalFormData;}
+});

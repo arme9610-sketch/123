@@ -86,22 +86,22 @@ test('existing dated completions are backfilled once and logs paginate without l
  const next=(await f.req('/api/contributions?offset=50')).data;assert.equal(next.logs.length,6);assert.equal(next.nextOffset,null);assert.equal(new Set([...report.logs,...next.logs].map(log=>log.id)).size,56);
 });
 
-test('stock edits, sales edits and manual descriptions each credit exactly one XP to the saving user',async t=>{
+test('stock edits credit quantity deltas while sales edits and manual descriptions credit one XP',async t=>{
  const f=await fixture(t);const workerId=f.worker.user.id;
  let stock=(await f.req('/api/state')).data.officeStock.find(s=>s.id==='pouch-set');
  const saveStock=body=>f.req('/api/office-stock/pouch-set','PUT',body,f.worker);
  const stockBody={version:stock.version,goodQty:3,returnedQty:2,serviceQty:0,defectiveQty:0};
  assert.equal((await saveStock(stockBody)).status,200);
- let report=(await f.req('/api/contributions')).data;assert.equal(report.members.find(u=>u.id===workerId).xp,1);assert.equal(report.members.find(u=>u.id===workerId).stockEdits,1);assert.match(report.logs[0].item_title,/사무실 재고 수정/);
+ let report=(await f.req('/api/contributions')).data;assert.equal(report.members.find(u=>u.id===workerId).xp,5);assert.equal(report.members.find(u=>u.id===workerId).stockEdits,1);assert.match(report.logs[0].item_title,/사무실 재고 수정/);assert.equal(Number(report.logs[0].xp),5);
  assert.equal((await saveStock({...stockBody,version:stock.version+1})).status,200);assert.equal((await saveStock(stockBody)).status,409);
- assert.equal((await f.req('/api/contributions')).data.members.find(u=>u.id===workerId).xp,1);
+ assert.equal((await f.req('/api/contributions')).data.members.find(u=>u.id===workerId).xp,5);
  const day=(await f.req('/api/daily-sales?day=2026-11-29')).data,siteId=day.sites[0].id;
  const {officeCatalog}=await import('../public/office-catalog.js');
  const entries=officeCatalog.map(s=>({sku:s.id,sold:s.id==='pouch-set'?10:0,cancelled:0,refunded:0}));
  let saved=await f.req('/api/daily-sales','PUT',{day:'2026-11-29',siteId,version:0,entries},f.worker);assert.equal(saved.status,200);
- report=(await f.req('/api/contributions')).data;assert.equal(report.members.find(u=>u.id===workerId).xp,2);assert.equal(report.members.find(u=>u.id===workerId).salesEdits,1);
+ report=(await f.req('/api/contributions')).data;assert.equal(report.members.find(u=>u.id===workerId).xp,6);assert.equal(report.members.find(u=>u.id===workerId).salesEdits,1);
  const same=await f.req('/api/daily-sales','PUT',{day:'2026-11-29',siteId,version:saved.data.record.version,entries:[...entries].reverse()},f.worker);assert.equal(same.status,200);
- assert.equal((await f.req('/api/contributions')).data.members.find(u=>u.id===workerId).xp,2);
+ assert.equal((await f.req('/api/contributions')).data.members.find(u=>u.id===workerId).xp,6);
  entries.find(e=>e.sku==='pouch-set').cancelled=1;
  saved=await f.req('/api/daily-sales','PUT',{day:'2026-11-29',siteId,version:same.data.record.version,entries},f.owner);assert.equal(saved.status,200);
  report=(await f.req('/api/contributions')).data;assert.equal(report.members.find(u=>u.id===f.owner.user.id).xp,1);
@@ -112,8 +112,57 @@ test('stock edits, sales edits and manual descriptions each credit exactly one X
  assert.equal((await f.req('/api/contributions/manual','POST',body,f.worker)).status,201);
  assert.equal((await f.req('/api/contributions/manual','POST',body,f.worker)).status,201);
  assert.equal((await f.req('/api/contributions/manual','POST',{...body,description:'다른 업무'},f.worker)).status,409);
- report=(await f.req('/api/contributions')).data;const worker=report.members.find(u=>u.id===workerId);assert.equal(worker.xp,3);assert.equal(worker.manual,1);assert.equal(worker.completed,0);
+ report=(await f.req('/api/contributions')).data;const worker=report.members.find(u=>u.id===workerId);assert.equal(worker.xp,7);assert.equal(worker.manual,1);assert.equal(worker.completed,0);
  const log=report.logs.find(log=>log.item_type==='manual');assert.equal(log.item_title,body.description);assert.equal(log.owner_id,workerId);
  f.setDate('2026-11-30T15:00:00Z');await f.req('/api/contributions/manual','POST',{requestId:randomUUID(),description:'12월 업무 기록'},f.worker);
  report=(await f.req('/api/contributions')).data;assert.equal(report.month,'2026-12');assert.equal(report.members.find(u=>u.id===workerId).xp,1);
+});
+
+test('stock quantity XP handles increases, decreases, all buckets, no-ops and conflicts',async t=>{
+ const f=await fixture(t),id=f.worker.user.id;
+ let stock=(await f.req('/api/state')).data.officeStock.find(s=>s.id==='pouch-set');
+ const save=async(goodQty,returnedQty,serviceQty,defectiveQty,version=stock.version)=>{
+  const result=await f.req('/api/office-stock/pouch-set','PUT',{goodQty,returnedQty,serviceQty,defectiveQty,version},f.worker);
+  if(result.status===200)stock=result.data.stock;return result;
+ };
+ const xp=async()=> (await f.req('/api/contributions')).data.members.find(u=>u.id===id).xp;
+ assert.equal((await save(1,0,0,0)).status,200);assert.equal(await xp(),1);
+ assert.equal((await save(1,3,0,0)).status,200);assert.equal(await xp(),4);
+ assert.equal((await save(0,1,2,3)).status,200);assert.equal(await xp(),12);
+ assert.equal((await save(0,1,2,3)).status,200);assert.equal(await xp(),12);
+ assert.equal((await save(0,0,0,0,1)).status,409);assert.equal(await xp(),12);
+ await f.restart();assert.equal(await xp(),12);
+ const report=(await f.req('/api/contributions')).data;
+ assert.equal(report.members.find(u=>u.id===id).stockEdits,3);
+ assert.deepEqual(report.logs.map(log=>Number(log.xp)).sort((a,b)=>a-b),[1,3,8]);
+ const db=await openStorage({dataDir:f.dir,databaseUrl:''});
+ try{const snapshot=await backupSnapshot(db);assert.equal((await rehearseBackup(snapshot)).ok,true);
+  for(const row of snapshot.tables.contribution_awards)delete row.xp;
+  assert.equal((await rehearseBackup(snapshot)).ok,true);
+ }finally{await db.close();}
+});
+
+test('existing contribution rows migrate with one XP without changing their history',async t=>{
+ const f=await fixture(t);await f.toggle(await f.create());
+ const raw=new DatabaseSync(f.dir+'/moa.sqlite');raw.exec('ALTER TABLE contribution_awards DROP COLUMN xp');raw.close();
+ await f.restart();const report=(await f.req('/api/contributions')).data;
+ assert.equal(report.total,1);assert.equal(report.members[0].xp,1);assert.equal(Number(report.logs[0].xp),1);
+});
+
+test('sales XP is one per saved sales site regardless of option count',async t=>{
+ const f=await fixture(t),workerId=f.worker.user.id;
+ const {officeCatalog}=await import('../public/office-catalog.js');
+ const save=async(siteId,count,version=0)=>{
+  const entries=officeCatalog.map((s,index)=>({sku:s.id,sold:index<count?3:0,cancelled:0,refunded:0}));
+  const result=await f.req('/api/daily-sales','PUT',{day:'2026-11-29',siteId,version,entries},f.worker);
+  assert.equal(result.status,200);return result.data.record.version;
+ };
+ await save('sales-geo',2);const cafeVersion=await save('sales-cafe24',5);
+ let report=(await f.req('/api/contributions')).data;
+ assert.equal(report.members.find(u=>u.id===workerId).xp,2);
+ assert.equal(report.logs.length,2);assert.ok(report.logs.every(log=>Number(log.xp)===1));
+ await save('sales-cafe24',1,cafeVersion);await save('sales-smartstore',1);
+ report=(await f.req('/api/contributions')).data;
+ assert.equal(report.members.find(u=>u.id===workerId).xp,4);
+ assert.equal(report.members.find(u=>u.id===workerId).salesEdits,4);
 });
