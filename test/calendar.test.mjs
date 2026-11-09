@@ -5,9 +5,17 @@ import {createApp} from '../server.mjs';
 import {mkdtemp,rm} from 'node:fs/promises';
 const items=[{id:'import',type:'inbound',title:'수입',date:'2026-11-02',warehouseDate:'2026-11-04',owner:'담당자'},...['task','office','shipment','meeting'].map(type=>({id:type,type,title:type,date:'2026-11-04',owner:'담당자'}))];
 test('ETA and warehouse arrivals appear on their own dates, including equal dates and different months',()=>{
- const events=calendarEntries(items);assert.equal(events.length,6);assert.equal(events.find(e=>e.item.id==='import'&&e.date==='2026-11-04').milestone,'창고 입고');assert.equal(calendarDayItems(items,'2026-11-04').length,5);
+ const events=calendarEntries(items);assert.equal(events.length,2);assert.equal(events.find(e=>e.item.id==='import'&&e.date==='2026-11-04').milestone,'창고 입고');assert.equal(calendarDayItems(items,'2026-11-04').length,1);
  const same=[{...items[0],warehouseDate:'2026-11-02'}];assert.equal(calendarEntries(same).length,2);assert.deepEqual(calendarDayItems(same,'2026-11-02')[0].milestones,['인천 ETA','창고 입고']);
  const later=[{...items[0],warehouseDate:'2026-12-01'}];assert.equal(calendarDayItems(later,'2026-12-01').length,1);assert.equal(calendarEntries([{...items[0],warehouseDate:null}]).length,1);
+});
+test('calendar includes inbound and urgent items only across entries and day details',()=>{
+ const mixed=[...items,...['task','office','shipment','meeting','inbound'].map(type=>({id:'urgent-'+type,type,priority:'urgent',date:'2026-11-04'}))];
+ assert.deepEqual(calendarDayItems(mixed,'2026-11-04').map(row=>row.item.id),['import','urgent-task','urgent-office','urgent-shipment','urgent-meeting','urgent-inbound']);
+ assert.equal(calendarEntries(mixed).length,7);
+ const normal=items.filter(item=>item.type!=='inbound').map(item=>({...item,priority:'normal'}));
+ assert.deepEqual(calendarEntries(normal),[]);
+ assert.deepEqual(calendarDayItems(normal,'2026-11-04'),[]);
 });
 test('whole day cells and keyboard open date management; empty cells offer adding a schedule',async()=>{
  const original=globalThis.document,events=new Map(),dialogEvents=new Map();let added,edited,dropped,colorChange;
@@ -15,7 +23,7 @@ test('whole day cells and keyboard open date management; empty cells offer addin
  globalThis.document={querySelector:()=>dialog,addEventListener:(type,fn)=>events.set(type,fn)};
  try{
   createCalendarDay({escape:String,getItems:()=>items,add:date=>added=date,edit:id=>edited=id,remove:async id=>dropped=id,setColor:async(id,color)=>{colorChange={id,color};}});
-  const cell={dataset:{calendarDay:'2026-11-04'}};events.get('click')({target:{closest:()=>cell}});assert.equal(dialog.open,true);assert.ok(dialog.innerHTML.includes('창고 입고'));assert.ok(dialog.innerHTML.includes('data-calendar-delete'));assert.ok(dialog.innerHTML.includes('data-calendar-color'));
+  const cell={dataset:{calendarDay:'2026-11-04'}};events.get('click')({target:{closest:()=>cell}});assert.equal(dialog.open,true);assert.ok(dialog.innerHTML.includes('창고 입고'));assert.ok(dialog.innerHTML.includes('data-calendar-delete'));assert.ok(dialog.innerHTML.includes('data-calendar-color'));assert.ok(!dialog.innerHTML.includes('data-calendar-edit="task"'));
   const select={dataset:{calendarColor:'task'},value:'purple'};await dialogEvents.get('change')({target:{closest:()=>select}});assert.deepEqual(colorChange,{id:'task',color:'purple'});
   const click=(selector,data)=>dialogEvents.get('click')({target:{closest:s=>s===selector?{dataset:data}:null}});
   await click('[data-calendar-edit]',{calendarEdit:'import'});assert.equal(edited,'import');
@@ -72,7 +80,7 @@ test('calendar colors persist, reject stale/unsafe writes, and can change on com
 
 test('home mini calendar shows the current month and marks today and schedule dates',async()=>{
  const {renderHomeCalendar}=await import('../public/home-calendar.js');
- const html=renderHomeCalendar([{id:'x',type:'task',date:'2024-02-29',title:'마감'}],'2024-02-29',String);
+ const html=renderHomeCalendar([{id:'x',type:'task',priority:'urgent',date:'2024-02-29',title:'마감'}],'2024-02-29',String);
  assert.ok(html.includes('2024년 2월'));assert.ok(html.includes('data-page="공용 달력"'));assert.ok(html.includes('mini-calendar-today mini-calendar-event'));assert.ok(html.includes('오늘 1개 일정'));assert.ok(html.includes('>29</span>'));
  assert.ok(!html.includes('data-calendar-day='),'the compact calendar navigates instead of opening a nested day editor');
 });
