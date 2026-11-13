@@ -109,7 +109,7 @@ test('Delete and Backspace remove selected images; Ctrl+Z restores position and 
   const select=path=>{const section={dataset:{index:path}},figure={closest:()=>section};events.get('pointerdown')({target:{closest:s=>s==='[data-image-select]'?figure:null}});};
   const key=(key,ctrlKey=false,editing=false)=>{let prevented=false;events.get('keydown')({key,ctrlKey,target:{closest:s=>editing&&s==='input,textarea,[contenteditable="true"]'?{}:null},preventDefault(){prevented=true;}});return prevented;};
   for(const deletionKey of ['Delete','Backspace']){
-   ui.load(serializeManual(original));select('1');assert.equal(key(deletionKey),true);assert.deepEqual(parseManual(ui.serialize()).map(b=>b.type),['text','text']);
+   ui.load(serializeManual(original));select('1');events.get('pointerdown')({target:{closest:()=>null}});assert.equal(key(deletionKey),false);assert.equal(parseManual(ui.serialize()).length,3);select('1');assert.equal(key(deletionKey),true);assert.deepEqual(parseManual(ui.serialize()).map(b=>b.type),['text','text']);
    events.get('input')({target:{closest:()=>({dataset:{index:'1'}}),dataset:{field:'text'},value:'뒤 문단 수정'}});
    assert.equal(key('z',true,true),false);assert.equal(parseManual(ui.serialize()).length,2);
    assert.equal(key('z',true),true);const restored=parseManual(ui.serialize());assert.deepEqual(restored[1],original[1]);assert.equal(restored[2].text,'뒤 문단 수정');

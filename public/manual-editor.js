@@ -143,7 +143,7 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
    if(generation!==uploadEpoch)return;
    if(target){if(locate(path).b!==target)return;target.src=src;target.type='image';}
    else {if(count()>=MAX_BLOCKS)throw new Error('문단은 최대 200개까지 추가할 수 있습니다.');blocks.push({type:'image',text:file.name||'이미지',src});}
-   preview=false;notify();
+   selectedImage=null;preview=false;notify();
   }catch(error){if(generation===uploadEpoch)alert(error.message);}
   finally{if(generation===uploadEpoch){uploading=false;draw();}}
  }
@@ -244,6 +244,8 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
   if(e.key==='Enter'&&e.target.matches('[data-image-select]')){e.preventDefault();const img=e.target.querySelector('img');openImageViewer(img.src,img.alt);}
  });
  document.addEventListener('pointerdown',e=>{if(selectedImage!==null&&!root.contains?.(e.target))selectImage(null);});
+ root.addEventListener('focusin',e=>{const figure=e.target.closest('[data-image-select]');selectImage(figure?.closest('[data-index]')??null);});
+ document.addEventListener('focusin',e=>{if(selectedImage!==null&&!root.contains?.(e.target))selectImage(null);});
  root.addEventListener('click',e=>{
   const viewer=root.querySelector('.manual-image-viewer');if(e.target===viewer){viewer.close();return;}
   if(preview){const img=e.target.closest('.manual-image img');if(img){openImageViewer(img.src,img.alt);return;}}
