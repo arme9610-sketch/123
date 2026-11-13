@@ -45,7 +45,7 @@ test('image file uploads and pasted images appear in the editor and survive savi
  globalThis.document={addEventListener(){}};globalThis.window={addEventListener(){}};
  try{
   const ui=createManualEditor(root,{onChange:()=>changes++,uploadImage:async()=>{uploads++;return '/api/resources/image-'+uploads+'/preview';}});
-  ui.load('문서 내용');assert.match(root.innerHTML,/이미지 올리기/);
+  ui.load('문서 내용');assert.ok(!root.innerHTML.includes('이미지 올리기'));
   events.get('change')({target:{type:'file',matches:()=>true,files:[{name:'상품.png',type:'image/png',size:100}],dataset:{}}});
   assert.throws(()=>ui.serialize(),/업로드/);await new Promise(r=>setImmediate(r));
   assert.match(root.innerHTML,/<img src="\/api\/resources\/image-1\/preview"/);assert.equal(parseManual(ui.serialize())[1].type,'image');
@@ -84,4 +84,17 @@ test('image corner dragging persists width and cancellation restores it',async()
   assert.equal(parseManual(ui.serialize())[0].width,60);assert.equal(changes,1);
   ui.load(ui.serialize());assert.match(root.innerHTML,/manual-frame-width-60/);
  }finally{globalThis.document=originalDocument;globalThis.window=originalWindow;}
+});
+
+test('plus menu image insertion opens the file picker at the inserted block',async()=>{
+ const {createManualEditor}=await import('../public/manual-editor.js');
+ const oldDocument=globalThis.document,oldWindow=globalThis.window,events=new Map();let picked='';
+ const root={innerHTML:'',addEventListener:(type,fn)=>events.set(type,fn),querySelectorAll:()=>[],querySelector:selector=>selector.startsWith('[data-image-path=')?{click(){picked=selector;}}:null};
+ globalThis.document={addEventListener(){}};globalThis.window={addEventListener(){}};
+ try{
+  const ui=createManualEditor(root,{uploadImage:async()=>'/api/resources/new/preview'});ui.load('기존 문단');
+  events.get('click')({target:{closest:()=>({dataset:{action:'insert',type:'image'},closest:()=>({dataset:{index:'0'}})})}});
+  assert.equal(picked,'[data-image-path="1"]');assert.equal(parseManual(ui.serialize())[1].type,'image');
+  assert.match(root.innerHTML,/data-action="image-replace">＋ 이미지 선택/);assert.ok(!root.innerHTML.includes('이미지 올리기'));
+ }finally{globalThis.document=oldDocument;globalThis.window=oldWindow;}
 });

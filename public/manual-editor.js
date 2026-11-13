@@ -12,7 +12,7 @@ function linkedImage(text){
 }
 function imageMarkup(b,editable=false){
  const src=manualImageSource(b.src),width=Number.isInteger(b.width)&&b.width>=10&&b.width<=100?b.width:null;
- if(!src)return '<p class="privacy">이미지를 올려 주세요.</p>';
+ if(!src)return editable?'<button type="button" class="manual-image-placeholder" data-action="image-replace">＋ 이미지 선택</button>':'<p class="privacy">이미지를 선택해 주세요.</p>';
  return `<figure class="manual-image ${editable?'manual-image-editable'+(width?' manual-frame-width-'+width:''):''}" ${editable?'data-image-select tabindex="0" aria-label="이미지 선택 · 더블클릭으로 크게 보기"':''}><img src="${esc(src)}" alt="${esc(b.text)}" class="${!editable&&width?'manual-image-width-'+width:''}" loading="lazy" referrerpolicy="no-referrer" draggable="false">${editable?`<div class="manual-image-toolbar" role="toolbar" aria-label="이미지 도구"><button type="button" data-action="image-view" title="크게 보기" aria-label="이미지 크게 보기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button><button type="button" data-action="image-original" title="원본 크기" aria-label="원본 크기로 되돌리기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h18M7 8l-4 4 4 4m10-8 4 4-4 4"/></svg></button><button type="button" data-action="image-replace" title="이미지 교체" aria-label="이미지 교체"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg></button><button type="button" data-action="image-delete" title="삭제" aria-label="이미지 삭제"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg></button></div>${['nw','ne','sw','se'].map(corner=>`<button type="button" class="manual-image-handle manual-image-handle-${corner}" data-image-resize="${corner}" aria-label="이미지 ${corner} 모서리 크기 조절"></button>`).join('')}`:''}</figure>`;
 }
 
@@ -95,7 +95,7 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
   return `<div class="manual-block manual-type-${b.type} ${b.type==='image'&&path===selectedImage?'manual-image-selected':''}" data-index="${path}"><div class="manual-block-gutter"><button type="button" data-action="add-menu" class="manual-block-add" aria-label="${label}번 문단 아래 블록 추가" aria-haspopup="menu" aria-expanded="${menu?.path===path&&menu.mode==='add'}">＋</button><button type="button" draggable="true" data-action="options-menu" class="manual-block-handle" aria-label="${label}번 문단 옵션" aria-haspopup="menu" aria-expanded="${menu?.path===path&&menu.mode==='options'}" title="클릭하여 종류 변경 · 끌어서 이동">⠿</button></div><div class="manual-block-content">${content}</div>${children}${menuMarkup(path)}</div>`;
  }
  function draw(focus=null){
-  root.innerHTML=`<div class="manual-editor-view"><button type="button" data-action="preview" aria-pressed="${preview}">${preview?'편집으로 돌아가기':'읽기 미리보기'}</button>${uploadImage?`<label class="manual-image-upload">${uploading?'이미지 업로드 중…':'＋ 이미지 올리기'}<input type="file" hidden data-image-upload accept="image/png,image/jpeg,image/webp,image/gif" ${uploading?'disabled':''}></label>`:''}</div>${preview?`<article class="manual-preview">${renderManual(blocks)}</article>`:`<div class="manual-blocks">${blocks.map((b,i)=>blockMarkup(b,String(i))).join('')}</div><button type="button" class="manual-add-paragraph" data-action="append">＋ 새 문단</button>`}`;
+  root.innerHTML=`<div class="manual-editor-view"><button type="button" data-action="preview" aria-pressed="${preview}">${preview?'편집으로 돌아가기':'읽기 미리보기'}</button>${uploading?'<span role="status" class="privacy">이미지 업로드 중…</span>':''}</div>${preview?`<article class="manual-preview">${renderManual(blocks)}</article>`:`<div class="manual-blocks">${blocks.map((b,i)=>blockMarkup(b,String(i))).join('')}</div><button type="button" class="manual-add-paragraph" data-action="append">＋ 새 문단</button>`}`;
   root.insertAdjacentHTML?.('beforeend','<dialog class="manual-image-viewer" aria-label="이미지 크게 보기"><button type="button" data-action="image-view-close" class="manual-image-view-close" aria-label="이미지 확대 닫기">✕</button><img alt=""></dialog>');
   root.querySelectorAll('textarea[data-path]').forEach(input=>{input.value=locate(input.dataset.path).b.text;resize(input);});
   if(focus!==null)focusBlock(focus);
@@ -108,7 +108,7 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
   else {const item=locate(path);siblings=inside?(item.b.children||=[]):item.siblings;index=inside?siblings.length:item.index+1;newPath=inside?`${path}.${index}`:pathFor(path,index);}
   const b={type,text:'',...(type==='image'?{src:''}:{}),...(type==='table'?{rows:[['',''],['','']]}:{}),...(type==='toggle'?{children:[{type:'text',text:''}]}:{})};
   if(type==='toggle'&&count()+2>MAX_BLOCKS)return;
-  siblings.splice(index,0,b);if(type==='toggle')expanded.add(b);menu=null;preview=false;draw(newPath);notify();
+  siblings.splice(index,0,b);if(type==='toggle')expanded.add(b);menu=null;preview=false;draw(newPath);notify();if(type==='image')root.querySelector(`[data-image-path="${newPath}"]`)?.click();
  }
  function splitInput(path,value,start,end=start){
   const {siblings,index,b}=locate(path),lines=value.split(/\r?\n/);if(lines.length===1)return false;
@@ -258,7 +258,7 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
   if(action==='col'&&b.rows[0].length<10)b.rows.forEach(r=>r.push(''));
   if(action==='remove-row'&&b.rows.length>1){if(b.rows.at(-1).some(Boolean)&&!confirm('내용이 있는 마지막 행을 삭제할까요?'))return;b.rows.pop();}
   if(action==='remove-col'&&b.rows[0].length>1){if(b.rows.some(r=>r.at(-1))&&!confirm('내용이 있는 마지막 열을 삭제할까요?'))return;b.rows.forEach(r=>r.pop());}
-  menu=null;draw();notify();
+  menu=null;draw();notify();if(action==='convert'&&b.type==='image'&&!b.src)root.querySelector(`[data-image-path="${path}"]`)?.click();
  });
  document.addEventListener('pointerdown',e=>{if(menu&&!e.target.closest('.manual-block-menu,.manual-block-gutter'))hideMenu();});
  root.addEventListener('dragstart',e=>{if(!e.target.matches('[data-action="options-menu"]'))return;dragPath=e.target.closest('[data-index]').dataset.index;e.dataTransfer.setData('text/plain',dragPath);e.dataTransfer.effectAllowed='move';hideMenu();});
