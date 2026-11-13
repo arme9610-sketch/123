@@ -65,19 +65,23 @@ test('image widths persist and render safely without inline styles',()=>{
  for(const width of [0,9,101,-1,50.5,'50',NaN])assert.throws(()=>serializeManual([{type:'image',text:'사진',src:'/api/resources/photo/preview',width}]));
 });
 
-test('image size slider updates the document and reset restores automatic sizing',async()=>{
+test('image corner dragging persists width and cancellation restores it',async()=>{
  const {createManualEditor}=await import('../public/manual-editor.js');
- const originalDocument=globalThis.document,originalWindow=globalThis.window,events=new Map();
- const img={className:''},label={textContent:''},section={dataset:{index:'0'},querySelector:selector=>selector==='.manual-image img'?img:label};let changes=0;
- const root={innerHTML:'',addEventListener:(type,fn)=>events.set(type,fn),querySelectorAll:()=>[],querySelector:()=>null};
+ const originalDocument=globalThis.document,originalWindow=globalThis.window,events=new Map();let changes=0;
+ const section={dataset:{index:'0'},classList:{toggle(){}}};
+ const figure={className:'',closest:()=>section,getBoundingClientRect:()=>({width:400,height:200}),parentElement:{getBoundingClientRect:()=>({width:800})}};
+ const handle={dataset:{imageResize:'se'}};
+ const root={innerHTML:'',addEventListener:(type,fn)=>events.set(type,fn),querySelectorAll:()=>[],querySelector:()=>null,setPointerCapture(){},hasPointerCapture:()=>true,releasePointerCapture(){}};
  globalThis.document={addEventListener(){}};globalThis.window={addEventListener(){}};
  try{
   const ui=createManualEditor(root,{onChange:()=>changes++});ui.load(serializeManual([{type:'image',text:'사진',src:'/api/resources/photo/preview'}]));
-  assert.match(root.innerHTML,/이미지 너비/);
-  events.get('input')({target:{closest:()=>section,dataset:{field:'image-width'},value:'45'}});
-  assert.equal(img.className,'manual-image-width-45');assert.equal(label.textContent,'45%');assert.equal(parseManual(ui.serialize())[0].width,45);assert.equal(changes,1);
-  ui.load(ui.serialize());assert.match(root.innerHTML,/value="45"/);
-  events.get('click')({target:{closest:()=>({dataset:{action:'image-original'},closest:()=>section})}});
-  assert.equal(parseManual(ui.serialize())[0].width,undefined);assert.match(root.innerHTML,/>자동<\/output>/);assert.equal(changes,2);
+  assert.match(root.innerHTML,/data-image-resize="se"/);assert.ok(!root.innerHTML.includes('type="range"'));assert.ok(!root.innerHTML.includes('이미지 변경'));
+  const down=()=>events.get('pointerdown')({target:{closest:s=>s==='[data-image-select]'?figure:handle},button:0,pointerId:1,clientX:400,clientY:200,preventDefault(){}});
+  down();events.get('pointermove')({pointerId:1,clientX:480,clientY:240});events.get('pointerup')({pointerId:1});
+  assert.equal(parseManual(ui.serialize())[0].width,60);assert.equal(changes,1);
+  assert.match(figure.className,/manual-frame-width-60/);
+  down();events.get('pointermove')({pointerId:1,clientX:320,clientY:160});events.get('pointercancel')({pointerId:1});
+  assert.equal(parseManual(ui.serialize())[0].width,60);assert.equal(changes,1);
+  ui.load(ui.serialize());assert.match(root.innerHTML,/manual-frame-width-60/);
  }finally{globalThis.document=originalDocument;globalThis.window=originalWindow;}
 });

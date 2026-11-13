@@ -10,7 +10,12 @@ function linkedImage(text){
  const value=text.trim(),match=value.match(/^!?\[([^\]]*)\]\(([^\s)]+)\)$/),src=manualImageSource(match?match[2]:value);
  return src?{type:'image',text:match?.[1]||'이미지',src}:null;
 }
-function imageMarkup(b){const src=manualImageSource(b.src);return src?`<figure class="manual-image"><img src="${esc(src)}" alt="${esc(b.text)}" class="${Number.isInteger(b.width)&&b.width>=10&&b.width<=100?'manual-image-width-'+b.width:''}" loading="lazy" referrerpolicy="no-referrer">${b.text?`<figcaption>${esc(b.text)}</figcaption>`:''}</figure>`:'<p class="privacy">이미지를 올려 주세요.</p>';}
+function imageMarkup(b,editable=false){
+ const src=manualImageSource(b.src),width=Number.isInteger(b.width)&&b.width>=10&&b.width<=100?b.width:null;
+ if(!src)return '<p class="privacy">이미지를 올려 주세요.</p>';
+ return `<figure class="manual-image ${editable?'manual-image-editable'+(width?' manual-frame-width-'+width:''):''}" ${editable?'data-image-select tabindex="0" aria-label="이미지 선택 · 더블클릭으로 크게 보기"':''}><img src="${esc(src)}" alt="${esc(b.text)}" class="${!editable&&width?'manual-image-width-'+width:''}" loading="lazy" referrerpolicy="no-referrer" draggable="false">${editable?`<div class="manual-image-toolbar" role="toolbar" aria-label="이미지 도구"><button type="button" data-action="image-view" title="크게 보기" aria-label="이미지 크게 보기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button><button type="button" data-action="image-original" title="원본 크기" aria-label="원본 크기로 되돌리기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h18M7 8l-4 4 4 4m10-8 4 4-4 4"/></svg></button><button type="button" data-action="image-replace" title="이미지 교체" aria-label="이미지 교체"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg></button><button type="button" data-action="image-delete" title="삭제" aria-label="이미지 삭제"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg></button></div>${['nw','ne','sw','se'].map(corner=>`<button type="button" class="manual-image-handle manual-image-handle-${corner}" data-image-resize="${corner}" aria-label="이미지 ${corner} 모서리 크기 조절"></button>`).join('')}`:''}</figure>`;
+}
+
 const MAX_BLOCKS=200;
 function validBlocks(blocks,depth=0,counter={value:0}){
  return depth<=12&&Array.isArray(blocks)&&blocks.every(b=>{
@@ -63,7 +68,7 @@ export function renderManual(blocks){return blocks.map(b=>{
  return `<p class="manual-lines ${b.type==='callout'?'manual-callout':''}">${text}</p>`;
  }).join('');}
 export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
- let blocks=[],preview=false,menu=null,dragPath=null,uploading=false,uploadEpoch=0;
+ let blocks=[],preview=false,menu=null,dragPath=null,uploading=false,uploadEpoch=0,selectedImage=null,imageDrag=null;
  const expanded=new Set();
  const icons={text:'T',h1:'H1',h2:'H2',h3:'H3',toggle:'▸',bullet:'•',number:'1.',check:'☑',quote:'❞',callout:'☞',divider:'—',table:'▦',image:'▧'};
  function locate(path){const parts=String(path).split('.').map(Number);let siblings=blocks;for(const index of parts.slice(0,-1))siblings=siblings[index].children;const index=parts.at(-1);return {siblings,index,b:siblings[index]};}
@@ -80,17 +85,18 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
  }
  function blockMarkup(b,path){
   let content='',children='';const label=path.split('.').map(n=>+n+1).join('-');
-  if(b.type==='image')content=`${imageMarkup(b)}<div class="manual-image-size"><label>이미지 너비<input type="range" min="10" max="100" step="1" value="${b.width??100}" data-field="image-width" aria-label="${label}번 이미지 너비"></label><output data-image-width-label>${b.width?b.width+'%':'자동'}</output><button type="button" data-action="image-original">원본 크기</button></div>${textInput(path,`${label}번 이미지 설명`,'이미지 설명')}${uploadImage?`<label class="manual-image-upload">이미지 변경<input type="file" data-image-upload data-image-path="${path}" accept="image/png,image/jpeg,image/webp,image/gif" ${uploading?'disabled':''}></label>`:''}`;
+  if(b.type==='image')content=`${imageMarkup(b,true)}${uploadImage?`<input type="file" hidden data-image-upload data-image-path="${path}" accept="image/png,image/jpeg,image/webp,image/gif">`:''}`;
   else if(b.type==='divider')content='<hr>';
   else if(b.type==='table')content=`<div class="manual-table-scroll"><table>${(b.rows||[['',''],['','']]).map((row,y)=>`<tr>${row.map((c,x)=>`<td><input data-row="${y}" data-col="${x}" aria-label="${y+1}행 ${x+1}열" value="${esc(c)}"></td>`).join('')}</tr>`).join('')}</table></div><div class="manual-table-tools"><button type="button" data-action="row">＋ 행</button><button type="button" data-action="col">＋ 열</button><button type="button" data-action="remove-row">마지막 행 삭제</button><button type="button" data-action="remove-col">마지막 열 삭제</button><small>첫 행은 머리글 · 최대 30행, 10열</small></div>`;
   else if(b.type==='toggle'){
    content=`<div class="manual-toggle-title"><button type="button" data-action="toggle" class="manual-toggle-arrow" aria-label="${label}번 토글 ${expanded.has(b)?'접기':'펼치기'}" aria-expanded="${expanded.has(b)}">${expanded.has(b)?'▾':'▸'}</button>${textInput(path,`${label}번 토글 제목`,'토글 제목')}</div>`;
    children=`<div class="manual-toggle-body" ${expanded.has(b)?'':'hidden'}>${(b.children||[]).map((child,i)=>blockMarkup(child,`${path}.${i}`)).join('')}<button type="button" class="manual-add-paragraph" data-action="append-child">＋ 토글 안에 문단 추가</button></div>`;
   }else content=`${b.type==='check'?`<input type="checkbox" data-field="checked" class="manual-checkbox" aria-label="${label}번 할 일 완료" ${b.checked?'checked':''}>`:''}${textInput(path,`${label}번 ${blockTypes[b.type]}`,b.type==='text'?'내용을 입력하세요. / 로 블록 선택':blockTypes[b.type]+' 입력')}`;
-  return `<div class="manual-block manual-type-${b.type}" data-index="${path}"><div class="manual-block-gutter"><button type="button" data-action="add-menu" class="manual-block-add" aria-label="${label}번 문단 아래 블록 추가" aria-haspopup="menu" aria-expanded="${menu?.path===path&&menu.mode==='add'}">＋</button><button type="button" draggable="true" data-action="options-menu" class="manual-block-handle" aria-label="${label}번 문단 옵션" aria-haspopup="menu" aria-expanded="${menu?.path===path&&menu.mode==='options'}" title="클릭하여 종류 변경 · 끌어서 이동">⠿</button></div><div class="manual-block-content">${content}</div>${children}${menuMarkup(path)}</div>`;
+  return `<div class="manual-block manual-type-${b.type} ${b.type==='image'&&path===selectedImage?'manual-image-selected':''}" data-index="${path}"><div class="manual-block-gutter"><button type="button" data-action="add-menu" class="manual-block-add" aria-label="${label}번 문단 아래 블록 추가" aria-haspopup="menu" aria-expanded="${menu?.path===path&&menu.mode==='add'}">＋</button><button type="button" draggable="true" data-action="options-menu" class="manual-block-handle" aria-label="${label}번 문단 옵션" aria-haspopup="menu" aria-expanded="${menu?.path===path&&menu.mode==='options'}" title="클릭하여 종류 변경 · 끌어서 이동">⠿</button></div><div class="manual-block-content">${content}</div>${children}${menuMarkup(path)}</div>`;
  }
  function draw(focus=null){
-  root.innerHTML=`<div class="manual-editor-view"><button type="button" data-action="preview" aria-pressed="${preview}">${preview?'편집으로 돌아가기':'읽기 미리보기'}</button>${uploadImage?`<label class="manual-image-upload">${uploading?'이미지 업로드 중…':'＋ 이미지 올리기'}<input type="file" data-image-upload accept="image/png,image/jpeg,image/webp,image/gif" ${uploading?'disabled':''}></label>`:''}</div>${preview?`<article class="manual-preview">${renderManual(blocks)}</article>`:`<div class="manual-blocks">${blocks.map((b,i)=>blockMarkup(b,String(i))).join('')}</div><button type="button" class="manual-add-paragraph" data-action="append">＋ 새 문단</button>`}`;
+  root.innerHTML=`<div class="manual-editor-view"><button type="button" data-action="preview" aria-pressed="${preview}">${preview?'편집으로 돌아가기':'읽기 미리보기'}</button>${uploadImage?`<label class="manual-image-upload">${uploading?'이미지 업로드 중…':'＋ 이미지 올리기'}<input type="file" hidden data-image-upload accept="image/png,image/jpeg,image/webp,image/gif" ${uploading?'disabled':''}></label>`:''}</div>${preview?`<article class="manual-preview">${renderManual(blocks)}</article>`:`<div class="manual-blocks">${blocks.map((b,i)=>blockMarkup(b,String(i))).join('')}</div><button type="button" class="manual-add-paragraph" data-action="append">＋ 새 문단</button>`}`;
+  root.insertAdjacentHTML?.('beforeend','<dialog class="manual-image-viewer" aria-label="이미지 크게 보기"><button type="button" data-action="image-view-close" class="manual-image-view-close" aria-label="이미지 확대 닫기">✕</button><img alt=""></dialog>');
   root.querySelectorAll('textarea[data-path]').forEach(input=>{input.value=locate(input.dataset.path).b.text;resize(input);});
   if(focus!==null)focusBlock(focus);
  }
@@ -116,7 +122,7 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
  function update(event){
   const input=event.target,section=input.closest('[data-index]');if(!section)return;
   const path=section.dataset.index,{b}=locate(path);
-  if(input.dataset.field==='image-width'){const width=Number(input.value);if(!Number.isInteger(width)||width<10||width>100)return;b.width=width;const img=section.querySelector('.manual-image img');if(img)img.className='manual-image-width-'+width;section.querySelector('[data-image-width-label]').textContent=width+'%';notify();return;}
+
   if(input.dataset.row!==undefined)b.rows[+input.dataset.row][+input.dataset.col]=input.value;
   else if(input.dataset.field==='text'){
    if(!event.isComposing&&!b.softBreaks&&input.value.includes('\n')&&splitInput(path,input.value,input.selectionStart))return;
@@ -164,15 +170,70 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
   }
   if(e.key==='Backspace'&&!input.value&&siblings.length>1&&!b.children?.some(child=>blocksText([child]).trim())){e.preventDefault();siblings.splice(index,1);menu=null;draw(pathFor(path,Math.max(0,index-1)));notify();}
  });
+ function selectImage(section){
+  selectedImage=section?.dataset.index??null;
+  root.querySelectorAll('.manual-type-image').forEach(el=>el.classList.toggle('manual-image-selected',el===section));
+ }
+ function setImageWidth(b,figure,width){
+  b.width=Math.max(10,Math.min(100,Math.round(width)));
+  figure.className='manual-image manual-image-editable manual-frame-width-'+b.width;
+ }
+ function openImageViewer(src,alt=''){
+  const viewer=root.querySelector('.manual-image-viewer');if(!viewer)return;
+  const image=viewer.querySelector('img');image.src=src;image.alt=alt;
+  if(!viewer.open)viewer.showModal();
+ }
+ root.addEventListener('pointerdown',e=>{
+  const figure=e.target.closest('[data-image-select]');if(!figure)return;
+  const section=figure.closest('[data-index]');selectImage(section);
+  const handle=e.target.closest('[data-image-resize]');if(!handle||e.button!==0)return;
+  e.preventDefault();const b=locate(section.dataset.index).b,rect=figure.getBoundingClientRect(),container=figure.parentElement.getBoundingClientRect();
+  if(!rect.width||!container.width)return;
+  imageDrag={b,figure,oldWidth:b.width,x:e.clientX,y:e.clientY,width:rect.width,aspect:rect.width/rect.height,container:container.width,corner:handle.dataset.imageResize,pointerId:e.pointerId};
+  root.setPointerCapture(e.pointerId);
+ });
+ root.addEventListener('pointermove',e=>{
+  if(!imageDrag||e.pointerId!==imageDrag.pointerId)return;
+  const d=imageDrag,dx=(e.clientX-d.x)*(d.corner.includes('w')?-1:1),dy=(e.clientY-d.y)*(d.corner.includes('n')?-1:1)*d.aspect;
+  const delta=Math.abs(dx)>=Math.abs(dy)?dx:dy;
+  setImageWidth(d.b,d.figure,(d.width+delta)/d.container*100);
+ });
+ function endImageDrag(e,cancel=false){
+  if(!imageDrag||e.pointerId!==imageDrag.pointerId)return;
+  const d=imageDrag;imageDrag=null;
+  if(root.hasPointerCapture?.(e.pointerId))root.releasePointerCapture(e.pointerId);
+  if(cancel){if(d.oldWidth===undefined)delete d.b.width;else d.b.width=d.oldWidth;draw();}
+  else if(d.b.width!==d.oldWidth)notify();
+ }
+ root.addEventListener('pointerup',e=>endImageDrag(e));
+ root.addEventListener('pointercancel',e=>endImageDrag(e,true));
+ root.addEventListener('lostpointercapture',e=>endImageDrag(e));
+ root.addEventListener('dblclick',e=>{const figure=e.target.closest('.manual-image');if(figure){e.preventDefault();const img=figure.querySelector('img');openImageViewer(img.src,img.alt);}});
+ root.addEventListener('keydown',e=>{
+  const handle=e.target.closest('[data-image-resize]');
+  if(handle&&['ArrowLeft','ArrowDown','ArrowRight','ArrowUp'].includes(e.key)){
+   e.preventDefault();const section=handle.closest('[data-index]'),b=locate(section.dataset.index).b,figure=handle.closest('.manual-image');
+   const current=b.width??figure.getBoundingClientRect().width/figure.parentElement.getBoundingClientRect().width*100;
+   setImageWidth(b,figure,current+(['ArrowLeft','ArrowDown'].includes(e.key)?-1:1)*(e.shiftKey?5:1));notify();return;
+  }
+  if(e.key==='Enter'&&e.target.matches('[data-image-select]')){e.preventDefault();const img=e.target.querySelector('img');openImageViewer(img.src,img.alt);}
+ });
+ document.addEventListener('pointerdown',e=>{if(selectedImage!==null&&!root.contains?.(e.target))selectImage(null);});
  root.addEventListener('click',e=>{
+  const viewer=root.querySelector('.manual-image-viewer');if(e.target===viewer){viewer.close();return;}
+  if(preview){const img=e.target.closest('.manual-image img');if(img){openImageViewer(img.src,img.alt);return;}}
   const button=e.target.closest('[data-action]');if(!button)return;
   const action=button.dataset.action,path=button.closest('[data-index]')?.dataset.index;
+  if(action==='image-view-close'){viewer?.close();return;}
   if(action==='preview'){preview=!preview;menu=null;draw();return;}
   if(action==='append'){addBlock(null);return;}
   const {siblings,index,b}=locate(path);
   if(action==='add-menu'||action==='options-menu'){
    const mode=action==='add-menu'?'add':'options';menu=menu?.path===path&&menu.mode===mode?null:{path,mode};draw();if(menu)root.querySelector('.manual-block-menu button')?.focus();return;
   }
+  if(action==='image-view'){openImageViewer(b.src,b.text);return;}
+  if(action==='image-replace'){button.closest('[data-index]').querySelector('[data-image-upload]')?.click();return;}
+  if(action==='image-delete'){siblings.splice(index,1);if(!siblings.length)siblings.push({type:'text',text:''});selectedImage=null;draw();notify();return;}
   if(action==='image-original'){delete b.width;draw();notify();return;}
   if(action==='insert'){addBlock(path,button.dataset.type);return;}
   if(action==='append-child'){addBlock(path,'text',true);return;}
@@ -209,5 +270,5 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
  });
  root.addEventListener('dragend',()=>{dragPath=null;root.querySelectorAll('.manual-drop-target').forEach(el=>el.classList.remove('manual-drop-target'));});
  window.addEventListener('resize',()=>{if(!root.closest('[hidden]'))root.querySelectorAll('textarea').forEach(resize);});
- return {load(content){uploadEpoch++;uploading=false;blocks=normalizeManualBlocks(parseManual(content));expanded.clear();preview=false;menu=null;draw();},serialize(){if(uploading)throw new Error('이미지 업로드가 끝난 뒤 저장해 주세요.');return serializeManual(blocks);},snapshot(){return JSON.stringify(blocks);},layout(){root.querySelectorAll('textarea').forEach(resize);}};
+ return {load(content){selectedImage=null;imageDrag=null;uploadEpoch++;uploading=false;blocks=normalizeManualBlocks(parseManual(content));expanded.clear();preview=false;menu=null;draw();},serialize(){if(uploading)throw new Error('이미지 업로드가 끝난 뒤 저장해 주세요.');return serializeManual(blocks);},snapshot(){return JSON.stringify(blocks);},layout(){root.querySelectorAll('textarea').forEach(resize);}};
 }
