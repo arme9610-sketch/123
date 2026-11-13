@@ -98,3 +98,23 @@ test('plus menu image insertion opens the file picker at the inserted block',asy
   assert.match(root.innerHTML,/data-action="image-replace">＋ 이미지 선택/);assert.ok(!root.innerHTML.includes('이미지 올리기'));
  }finally{globalThis.document=oldDocument;globalThis.window=oldWindow;}
 });
+
+test('Delete and Backspace remove selected images; Ctrl+Z restores position and size without losing text edits',async()=>{
+ const {createManualEditor}=await import('../public/manual-editor.js');
+ const oldDocument=globalThis.document,oldWindow=globalThis.window,events=new Map();
+ const root={innerHTML:'',addEventListener:(type,fn)=>events.set(type,fn),querySelectorAll:()=>[],querySelector:()=>null,focus(){},setAttribute(){}};
+ globalThis.document={addEventListener(){}};globalThis.window={addEventListener(){}};
+ try{
+  const ui=createManualEditor(root);const original=[{type:'text',text:'앞'},{type:'image',text:'사진',src:'/api/resources/photo/preview',width:45},{type:'text',text:'뒤'}];
+  const select=path=>{const section={dataset:{index:path}},figure={closest:()=>section};events.get('pointerdown')({target:{closest:s=>s==='[data-image-select]'?figure:null}});};
+  const key=(key,ctrlKey=false,editing=false)=>{let prevented=false;events.get('keydown')({key,ctrlKey,target:{closest:s=>editing&&s==='input,textarea,[contenteditable="true"]'?{}:null},preventDefault(){prevented=true;}});return prevented;};
+  for(const deletionKey of ['Delete','Backspace']){
+   ui.load(serializeManual(original));select('1');assert.equal(key(deletionKey),true);assert.deepEqual(parseManual(ui.serialize()).map(b=>b.type),['text','text']);
+   events.get('input')({target:{closest:()=>({dataset:{index:'1'}}),dataset:{field:'text'},value:'뒤 문단 수정'}});
+   assert.equal(key('z',true,true),false);assert.equal(parseManual(ui.serialize()).length,2);
+   assert.equal(key('z',true),true);const restored=parseManual(ui.serialize());assert.deepEqual(restored[1],original[1]);assert.equal(restored[2].text,'뒤 문단 수정');
+  }
+  ui.load(serializeManual([original[1]]));select('0');key('Delete');assert.equal(key('z',true),true);assert.deepEqual(parseManual(ui.serialize()),[original[1]]);
+  select('0');key('Delete');ui.load('다른 문서');assert.equal(key('z',true),false);assert.equal(manualText(ui.serialize()),'다른 문서');
+ }finally{globalThis.document=oldDocument;globalThis.window=oldWindow;}
+});

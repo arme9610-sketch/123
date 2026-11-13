@@ -69,6 +69,7 @@ export function renderManual(blocks){return blocks.map(b=>{
  }).join('');}
 export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
  let blocks=[],preview=false,menu=null,dragPath=null,uploading=false,uploadEpoch=0,selectedImage=null,imageDrag=null;
+ const imageDeletions=[];
  const expanded=new Set();
  const icons={text:'T',h1:'H1',h2:'H2',h3:'H3',toggle:'▸',bullet:'•',number:'1.',check:'☑',quote:'❞',callout:'☞',divider:'—',table:'▦',image:'▧'};
  function locate(path){const parts=String(path).split('.').map(Number);let siblings=blocks;for(const index of parts.slice(0,-1))siblings=siblings[index].children;const index=parts.at(-1);return {siblings,index,b:siblings[index]};}
@@ -174,6 +175,24 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
   selectedImage=section?.dataset.index??null;
   root.querySelectorAll('.manual-type-image').forEach(el=>el.classList.toggle('manual-image-selected',el===section));
  }
+ function imageSiblingsExist(target,items=blocks){return items===target||items.some(b=>b.children&&imageSiblingsExist(target,b.children));}
+ function removeImage(path){
+  const {siblings,index,b}=locate(path);if(b.type!=='image')return;
+  const entry={siblings,index,b,before:siblings[index-1],after:siblings[index+1],placeholder:null};
+  siblings.splice(index,1);
+  if(!siblings.length){entry.placeholder={type:'text',text:''};siblings.push(entry.placeholder);}
+  imageDeletions.push(entry);if(imageDeletions.length>50)imageDeletions.shift();
+  selectedImage=null;menu=null;draw();root.setAttribute?.('tabindex','-1');root.focus?.({preventScroll:true});notify();
+ }
+ function undoImageDeletion(){
+  const entry=imageDeletions.at(-1);if(!entry||!imageSiblingsExist(entry.siblings))return false;
+  imageDeletions.pop();const {siblings,b,placeholder}=entry;
+  const placeholderIndex=siblings.indexOf(placeholder);
+  if(placeholderIndex>=0&&placeholder.type==='text'&&!placeholder.text&&!placeholder.children)siblings.splice(placeholderIndex,1);
+  let index=entry.after?siblings.indexOf(entry.after):-1;
+  if(index<0){const beforeIndex=siblings.indexOf(entry.before);index=beforeIndex>=0?beforeIndex+1:Math.min(entry.index,siblings.length);}
+  siblings.splice(index,0,b);menu=null;draw();root.focus?.({preventScroll:true});notify();return true;
+ }
  function setImageWidth(b,figure,width){
   b.width=Math.max(10,Math.min(100,Math.round(width)));
   figure.className='manual-image manual-image-editable manual-frame-width-'+b.width;
@@ -184,7 +203,7 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
   if(!viewer.open)viewer.showModal();
  }
  root.addEventListener('pointerdown',e=>{
-  const figure=e.target.closest('[data-image-select]');if(!figure)return;
+  const figure=e.target.closest('[data-image-select]');if(!figure){selectImage(null);return;}
   const section=figure.closest('[data-index]');selectImage(section);
   const handle=e.target.closest('[data-image-resize]');if(!handle||e.button!==0)return;
   e.preventDefault();const b=locate(section.dataset.index).b,rect=figure.getBoundingClientRect(),container=figure.parentElement.getBoundingClientRect();
@@ -210,6 +229,12 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
  root.addEventListener('lostpointercapture',e=>endImageDrag(e));
  root.addEventListener('dblclick',e=>{const figure=e.target.closest('.manual-image');if(figure){e.preventDefault();const img=figure.querySelector('img');openImageViewer(img.src,img.alt);}});
  root.addEventListener('keydown',e=>{
+  if(e.isComposing||root.querySelector('.manual-image-viewer')?.open)return;
+  const editingText=e.target.closest('input,textarea,[contenteditable="true"]');
+  if(!editingText&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'){
+   if(undoImageDeletion())e.preventDefault();return;
+  }
+  if(!editingText&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&['Delete','Backspace'].includes(e.key)&&selectedImage!==null){e.preventDefault();removeImage(selectedImage);return;}
   const handle=e.target.closest('[data-image-resize]');
   if(handle&&['ArrowLeft','ArrowDown','ArrowRight','ArrowUp'].includes(e.key)){
    e.preventDefault();const section=handle.closest('[data-index]'),b=locate(section.dataset.index).b,figure=handle.closest('.manual-image');
@@ -233,7 +258,8 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
   }
   if(action==='image-view'){openImageViewer(b.src,b.text);return;}
   if(action==='image-replace'){button.closest('[data-index]').querySelector('[data-image-upload]')?.click();return;}
-  if(action==='image-delete'){siblings.splice(index,1);if(!siblings.length)siblings.push({type:'text',text:''});selectedImage=null;draw();notify();return;}
+  if(action==='image-delete'){removeImage(path);return;}
+  if(action==='remove'&&b.type==='image'){removeImage(path);return;}
   if(action==='image-original'){delete b.width;draw();notify();return;}
   if(action==='insert'){addBlock(path,button.dataset.type);return;}
   if(action==='append-child'){addBlock(path,'text',true);return;}
@@ -270,5 +296,5 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
  });
  root.addEventListener('dragend',()=>{dragPath=null;root.querySelectorAll('.manual-drop-target').forEach(el=>el.classList.remove('manual-drop-target'));});
  window.addEventListener('resize',()=>{if(!root.closest('[hidden]'))root.querySelectorAll('textarea').forEach(resize);});
- return {load(content){selectedImage=null;imageDrag=null;uploadEpoch++;uploading=false;blocks=normalizeManualBlocks(parseManual(content));expanded.clear();preview=false;menu=null;draw();},serialize(){if(uploading)throw new Error('이미지 업로드가 끝난 뒤 저장해 주세요.');return serializeManual(blocks);},snapshot(){return JSON.stringify(blocks);},layout(){root.querySelectorAll('textarea').forEach(resize);}};
+ return {load(content){imageDeletions.length=0;selectedImage=null;imageDrag=null;uploadEpoch++;uploading=false;blocks=normalizeManualBlocks(parseManual(content));expanded.clear();preview=false;menu=null;draw();},serialize(){if(uploading)throw new Error('이미지 업로드가 끝난 뒤 저장해 주세요.');return serializeManual(blocks);},snapshot(){return JSON.stringify(blocks);},layout(){root.querySelectorAll('textarea').forEach(resize);}};
 }
