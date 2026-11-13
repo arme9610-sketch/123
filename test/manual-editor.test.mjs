@@ -27,3 +27,30 @@ test('nested content is escaped and child-only text makes a valid document',()=>
 test('normalization does not discard an over-limit legacy toggle body',()=>{
  const blocks=normalizeManualBlocks([{type:'toggle',text:'보존',body:Array.from({length:201},(_,i)=>String(i)).join('\n')}]);assert.match(blocks[0].children.map(b=>b.text).join('\n'),/200$/);
 });
+
+test('images persist as inline images and legacy image links convert without executing HTML',()=>{
+ const blocks=[{type:'image',text:'제품 <사진>',src:'/api/resources/abc-123/preview'}];
+ const saved=serializeManual(blocks);assert.deepEqual(parseManual(saved),blocks);assert.match(manualText(saved),/제품 <사진>/);
+ const html=renderManual(blocks);assert.match(html,/<img src="\/api\/resources\/abc-123\/preview"/);assert.match(html,/alt="제품 &lt;사진&gt;"/);assert.ok(!html.includes('<a '));
+ const legacy=normalizeManualBlocks([{type:'text',text:'설명\n![사진](https://example.com/photo.png)\n/api/resources/abc-123/download'}]);
+ assert.deepEqual(legacy.map(b=>b.type),['text','image','image']);assert.equal(legacy[2].src,'/api/resources/abc-123/preview');
+ assert.match(renderManual([{type:'text',text:'https://example.com/photo.jpg'}]),/<img /);
+ for(const src of ['javascript:alert(1)','data:image/svg+xml,bad','//evil.test/a.png','/api/resources/a/delete','https://example.com/a.svg'])assert.throws(()=>serializeManual([{type:'image',text:'사진',src}]));
+});
+
+test('image file uploads and pasted images appear in the editor and survive saving',async()=>{
+ const {createManualEditor}=await import('../public/manual-editor.js');
+ const originalDocument=globalThis.document,originalWindow=globalThis.window;
+ const events=new Map(),root={innerHTML:'',addEventListener:(type,fn)=>events.set(type,fn),querySelectorAll:()=>[],querySelector:()=>null};let changes=0,uploads=0;
+ globalThis.document={addEventListener(){}};globalThis.window={addEventListener(){}};
+ try{
+  const ui=createManualEditor(root,{onChange:()=>changes++,uploadImage:async()=>{uploads++;return '/api/resources/image-'+uploads+'/preview';}});
+  ui.load('문서 내용');assert.match(root.innerHTML,/이미지 올리기/);
+  events.get('change')({target:{type:'file',matches:()=>true,files:[{name:'상품.png',type:'image/png',size:100}],dataset:{}}});
+  assert.throws(()=>ui.serialize(),/업로드/);await new Promise(r=>setImmediate(r));
+  assert.match(root.innerHTML,/<img src="\/api\/resources\/image-1\/preview"/);assert.equal(parseManual(ui.serialize())[1].type,'image');
+  let prevented=false;events.get('paste')({preventDefault(){prevented=true;},clipboardData:{files:[{name:'붙여넣기.png',type:'image/png',size:100}]}});
+  await new Promise(r=>setImmediate(r));assert.equal(prevented,true);assert.equal(uploads,2);assert.equal(changes,2);
+  const content=ui.serialize();ui.load(content);assert.match(root.innerHTML,/image-2\/preview/);
+ }finally{globalThis.document=originalDocument;globalThis.window=originalWindow;}
+});

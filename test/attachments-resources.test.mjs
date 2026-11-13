@@ -117,3 +117,17 @@ for(const engine of engines){
   const encrypted=await encryptBackup(snapshot,'Legacy-backup-password'),restored=await decryptBackup(encrypted,'Legacy-backup-password');assert.deepEqual(restored.tables.inbound_attachments,[]);assert.equal(restored.tables.library_resources[0].pin_hash,null);assert.equal((await rehearseBackup(restored)).ok,true);
  });
 }
+
+for(const engine of engines)test(engine+': document images render inline with authentication and protected files remain private',async t=>{
+ const f=await fixture(t,engine);
+ const result=await f.req('/api/resources','POST',{title:'문서 사진',category:'문서 이미지',...upload('photo.png',png)});assert.equal(result.status,201);
+ const path='/api/resources/'+result.data.id+'/preview';
+ assert.equal((await f.req(path,'GET',undefined,{})).status,401);
+ const image=await f.req(path);assert.equal(image.status,200);assert.equal(image.headers.get('content-type'),'image/png');assert.equal(image.headers.get('content-disposition'),'inline');assert.deepEqual(image.data,png);
+ const content='DAYON_BLOCKS_V1\n'+JSON.stringify([{type:'image',text:'문서 사진',src:path}]);
+ const doc=await f.req('/api/manuals','POST',{title:'사진 문서',category:'일반',content});assert.equal(doc.status,201);
+ await f.restart();assert.deepEqual((await f.req(path)).data,png);assert.equal((await f.req('/api/manuals')).data.results.find(row=>row.id===doc.data.id)?.content,content);
+ const locked=await f.req('/api/resources','POST',{title:'보호 사진',...upload('secret.png',png),password:'1234'});assert.equal((await f.req('/api/resources/'+locked.data.id+'/preview')).status,403);
+ const fake=await f.req('/api/resources','POST',{title:'가짜 사진',...upload('fake.png',Buffer.from('<script>bad</script>'))});assert.equal((await f.req('/api/resources/'+fake.data.id+'/preview')).status,422);
+ assert.equal((await f.req('/api/resources','POST',{title:'가짜 업로드',category:'문서 이미지',...upload('fake.png',Buffer.from('invalid'))})).status,422);
+});

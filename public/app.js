@@ -509,7 +509,11 @@ function chatPage() {
  return heading('이야기가 이어지는 곳','대화와 지난 기록을 한곳에서 확인하세요.')+`<section class="panel chat"><div class="panel-head"><h2>모두의 대화</h2><span class="muted">${chatSearchActive?'전체 대화 기록 검색':'최근 대화 500개'}</span></div>${searchFields('채팅')}<div class="messages" ${chatSearchActive?'data-filtered-chat="true"':''}>${chatSearchActive?collectionBody('채팅',messageMarkup):(state.messages.map(messageMarkup).join('')||empty('첫 번째 이야기를 남겨보세요.'))}</div><form id="chat-form"><input name="message" required maxlength="2000" placeholder="메시지를 입력하세요" aria-label="메시지"><button class="primary">보내기 ↗</button></form></section>`;
 }
 let manualEditing=null,manualOpen=false,manualSaving=false,manualSavedSnapshot='',manualReturnScroll=0;
-const manualEditor=createManualEditor(document.getElementById('manual-editor'),{onChange:updateManualStatus});
+const manualEditor=createManualEditor(document.getElementById('manual-editor'),{onChange:updateManualStatus,uploadImage:async file=>{
+ const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('이미지를 읽지 못했습니다.'));reader.readAsDataURL(file);});
+ const result=await api('/api/resources',{method:'POST',body:{title:file.name.slice(0,100)||'문서 이미지',category:'문서 이미지',filename:file.name,data}});
+ return '/api/resources/'+result.id+'/preview';
+}});
 function manualSnapshot(){const form=$('#manual-form');return JSON.stringify({title:form.elements.title.value,category:form.elements.category.value,blocks:manualEditor.snapshot()});}
 function manualDirty(){return manualOpen&&manualSnapshot()!==manualSavedSnapshot;}
 function updateManualStatus(){if(manualOpen)$('#manual-save-status').textContent=manualSaving?'저장 중…':manualDirty()?'저장하지 않은 변경사항':'저장됨';}
