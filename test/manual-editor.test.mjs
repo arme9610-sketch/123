@@ -54,3 +54,30 @@ test('image file uploads and pasted images appear in the editor and survive savi
   const content=ui.serialize();ui.load(content);assert.match(root.innerHTML,/image-2\/preview/);
  }finally{globalThis.document=originalDocument;globalThis.window=originalWindow;}
 });
+
+test('image widths persist and render safely without inline styles',()=>{
+ for(const width of [10,25,50,75,100]){
+  const blocks=[{type:'image',text:'사진',src:'/api/resources/photo/preview',width}];
+  assert.deepEqual(normalizeManualBlocks(parseManual(serializeManual(blocks))),blocks);
+  assert.match(renderManual(blocks),new RegExp('class="manual-image-width-'+width+'"'));
+  assert.ok(!renderManual(blocks).includes('style='));
+ }
+ for(const width of [0,9,101,-1,50.5,'50',NaN])assert.throws(()=>serializeManual([{type:'image',text:'사진',src:'/api/resources/photo/preview',width}]));
+});
+
+test('image size slider updates the document and reset restores automatic sizing',async()=>{
+ const {createManualEditor}=await import('../public/manual-editor.js');
+ const originalDocument=globalThis.document,originalWindow=globalThis.window,events=new Map();
+ const img={className:''},label={textContent:''},section={dataset:{index:'0'},querySelector:selector=>selector==='.manual-image img'?img:label};let changes=0;
+ const root={innerHTML:'',addEventListener:(type,fn)=>events.set(type,fn),querySelectorAll:()=>[],querySelector:()=>null};
+ globalThis.document={addEventListener(){}};globalThis.window={addEventListener(){}};
+ try{
+  const ui=createManualEditor(root,{onChange:()=>changes++});ui.load(serializeManual([{type:'image',text:'사진',src:'/api/resources/photo/preview'}]));
+  assert.match(root.innerHTML,/이미지 너비/);
+  events.get('input')({target:{closest:()=>section,dataset:{field:'image-width'},value:'45'}});
+  assert.equal(img.className,'manual-image-width-45');assert.equal(label.textContent,'45%');assert.equal(parseManual(ui.serialize())[0].width,45);assert.equal(changes,1);
+  ui.load(ui.serialize());assert.match(root.innerHTML,/value="45"/);
+  events.get('click')({target:{closest:()=>({dataset:{action:'image-original'},closest:()=>section})}});
+  assert.equal(parseManual(ui.serialize())[0].width,undefined);assert.match(root.innerHTML,/>자동<\/output>/);assert.equal(changes,2);
+ }finally{globalThis.document=originalDocument;globalThis.window=originalWindow;}
+});

@@ -10,11 +10,12 @@ function linkedImage(text){
  const value=text.trim(),match=value.match(/^!?\[([^\]]*)\]\(([^\s)]+)\)$/),src=manualImageSource(match?match[2]:value);
  return src?{type:'image',text:match?.[1]||'이미지',src}:null;
 }
-function imageMarkup(b){const src=manualImageSource(b.src);return src?`<figure class="manual-image"><img src="${esc(src)}" alt="${esc(b.text)}" loading="lazy" referrerpolicy="no-referrer">${b.text?`<figcaption>${esc(b.text)}</figcaption>`:''}</figure>`:'<p class="privacy">이미지를 올려 주세요.</p>';}
+function imageMarkup(b){const src=manualImageSource(b.src);return src?`<figure class="manual-image"><img src="${esc(src)}" alt="${esc(b.text)}" class="${Number.isInteger(b.width)&&b.width>=10&&b.width<=100?'manual-image-width-'+b.width:''}" loading="lazy" referrerpolicy="no-referrer">${b.text?`<figcaption>${esc(b.text)}</figcaption>`:''}</figure>`:'<p class="privacy">이미지를 올려 주세요.</p>';}
 const MAX_BLOCKS=200;
 function validBlocks(blocks,depth=0,counter={value:0}){
  return depth<=12&&Array.isArray(blocks)&&blocks.every(b=>{
   if(++counter.value>MAX_BLOCKS||!b||!Object.hasOwn(blockTypes,b.type)||typeof b.text!=='string')return false;
+  if(b.width!==undefined&&(!Number.isInteger(b.width)||b.width<10||b.width>100))return false;
   if(b.type==='image'&&(typeof b.src!=='string'||(b.src&&!manualImageSource(b.src))))return false;
   if(b.body!==undefined&&typeof b.body!=='string')return false;
   if(b.rows!==undefined&&(!Array.isArray(b.rows)||!b.rows.length||b.rows.length>30||!b.rows.every(r=>Array.isArray(r)&&r.length>0&&r.length===b.rows[0].length&&r.length<=10&&r.every(c=>typeof c==='string'))))return false;
@@ -79,7 +80,7 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
  }
  function blockMarkup(b,path){
   let content='',children='';const label=path.split('.').map(n=>+n+1).join('-');
-  if(b.type==='image')content=`${imageMarkup(b)}${textInput(path,`${label}번 이미지 설명`,'이미지 설명')}${uploadImage?`<label class="manual-image-upload">이미지 변경<input type="file" data-image-upload data-image-path="${path}" accept="image/png,image/jpeg,image/webp,image/gif" ${uploading?'disabled':''}></label>`:''}`;
+  if(b.type==='image')content=`${imageMarkup(b)}<div class="manual-image-size"><label>이미지 너비<input type="range" min="10" max="100" step="1" value="${b.width??100}" data-field="image-width" aria-label="${label}번 이미지 너비"></label><output data-image-width-label>${b.width?b.width+'%':'자동'}</output><button type="button" data-action="image-original">원본 크기</button></div>${textInput(path,`${label}번 이미지 설명`,'이미지 설명')}${uploadImage?`<label class="manual-image-upload">이미지 변경<input type="file" data-image-upload data-image-path="${path}" accept="image/png,image/jpeg,image/webp,image/gif" ${uploading?'disabled':''}></label>`:''}`;
   else if(b.type==='divider')content='<hr>';
   else if(b.type==='table')content=`<div class="manual-table-scroll"><table>${(b.rows||[['',''],['','']]).map((row,y)=>`<tr>${row.map((c,x)=>`<td><input data-row="${y}" data-col="${x}" aria-label="${y+1}행 ${x+1}열" value="${esc(c)}"></td>`).join('')}</tr>`).join('')}</table></div><div class="manual-table-tools"><button type="button" data-action="row">＋ 행</button><button type="button" data-action="col">＋ 열</button><button type="button" data-action="remove-row">마지막 행 삭제</button><button type="button" data-action="remove-col">마지막 열 삭제</button><small>첫 행은 머리글 · 최대 30행, 10열</small></div>`;
   else if(b.type==='toggle'){
@@ -115,6 +116,7 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
  function update(event){
   const input=event.target,section=input.closest('[data-index]');if(!section)return;
   const path=section.dataset.index,{b}=locate(path);
+  if(input.dataset.field==='image-width'){const width=Number(input.value);if(!Number.isInteger(width)||width<10||width>100)return;b.width=width;const img=section.querySelector('.manual-image img');if(img)img.className='manual-image-width-'+width;section.querySelector('[data-image-width-label]').textContent=width+'%';notify();return;}
   if(input.dataset.row!==undefined)b.rows[+input.dataset.row][+input.dataset.col]=input.value;
   else if(input.dataset.field==='text'){
    if(!event.isComposing&&!b.softBreaks&&input.value.includes('\n')&&splitInput(path,input.value,input.selectionStart))return;
@@ -171,6 +173,7 @@ export function createManualEditor(root,{onChange=()=>{},uploadImage}={}) {
   if(action==='add-menu'||action==='options-menu'){
    const mode=action==='add-menu'?'add':'options';menu=menu?.path===path&&menu.mode===mode?null:{path,mode};draw();if(menu)root.querySelector('.manual-block-menu button')?.focus();return;
   }
+  if(action==='image-original'){delete b.width;draw();notify();return;}
   if(action==='insert'){addBlock(path,button.dataset.type);return;}
   if(action==='append-child'){addBlock(path,'text',true);return;}
   if(action==='toggle'){expanded.has(b)?expanded.delete(b):expanded.add(b);draw();return;}
