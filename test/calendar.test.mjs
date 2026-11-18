@@ -9,10 +9,10 @@ test('ETA and warehouse arrivals appear on their own dates, including equal date
  const same=[{...items[0],warehouseDate:'2026-11-02'}];assert.equal(calendarEntries(same).length,2);assert.deepEqual(calendarDayItems(same,'2026-11-02')[0].milestones,['인천 ETA','창고 입고']);
  const later=[{...items[0],warehouseDate:'2026-12-01'}];assert.equal(calendarDayItems(later,'2026-12-01').length,1);assert.equal(calendarEntries([{...items[0],warehouseDate:null}]).length,1);
 });
-test('calendar includes inbound and urgent items only across entries and day details',()=>{
+test('calendar includes only imports and excludes even urgent tasks across entries and day details',()=>{
  const mixed=[...items,...['task','office','shipment','meeting','inbound'].map(type=>({id:'urgent-'+type,type,priority:'urgent',date:'2026-11-04'}))];
- assert.deepEqual(calendarDayItems(mixed,'2026-11-04').map(row=>row.item.id),['import','urgent-task','urgent-office','urgent-shipment','urgent-meeting','urgent-inbound']);
- assert.equal(calendarEntries(mixed).length,7);
+ assert.deepEqual(calendarDayItems(mixed,'2026-11-04').map(row=>row.item.id),['import','urgent-inbound']);
+ assert.equal(calendarEntries(mixed).length,3);
  const normal=items.filter(item=>item.type!=='inbound').map(item=>({...item,priority:'normal'}));
  assert.deepEqual(calendarEntries(normal),[]);
  assert.deepEqual(calendarDayItems(normal,'2026-11-04'),[]);
@@ -80,7 +80,7 @@ test('calendar colors persist, reject stale/unsafe writes, and can change on com
 
 test('home mini calendar shows the current month and marks today and schedule dates',async()=>{
  const {renderHomeCalendar}=await import('../public/home-calendar.js');
- const html=renderHomeCalendar([{id:'x',type:'task',priority:'urgent',date:'2024-02-29',title:'마감'}],'2024-02-29',String);
+ const html=renderHomeCalendar([{id:'x',type:'inbound',date:'2024-02-29',title:'수입'},{id:'urgent',type:'task',priority:'urgent',date:'2024-02-29',title:'긴급 업무'}],'2024-02-29',String);
  assert.ok(html.includes('2024년 2월'));assert.ok(html.includes('data-page="공용 달력"'));assert.ok(html.includes('mini-calendar-today mini-calendar-event'));assert.ok(html.includes('오늘 1개 일정'));assert.ok(html.includes('>29</span>'));
  assert.ok(!html.includes('data-calendar-day='),'the compact calendar navigates instead of opening a nested day editor');
 });
